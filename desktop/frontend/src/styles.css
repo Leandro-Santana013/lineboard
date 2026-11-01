@@ -1,0 +1,73 @@
+:root {
+  color: #142235;
+  background: #f2f6fa;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 960px; background: #f2f6fa; }
+button, input, textarea { font-family: inherit; }
+.app-content { max-width: 1400px; min-height: 100vh; padding: 26px 28px 38px; margin: 0 auto; }
+.inventory-shell { height: 100vh; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.brand .mantine-ThemeIcon-root { background: #08a0a5; color: #fff; }
+.nav-link { color: #e1edf5; border-radius: 9px; height: 48px; font-weight: 600; }
+.nav-link:hover { background: rgba(45, 111, 128, .35); }
+.nav-link.active { background: #174e62; color: #fff; box-shadow: inset 3px 0 #16b6ba; }
+.lab-dot { display: inline-block; width: 14px; height: 14px; background: #ffc45a; border-radius: 50%; margin: 0 9px 0 2px; vertical-align: -2px; }
+.page-heading h1 { letter-spacing: -.025em; }
+.inventory-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: stretch; flex: 1; min-height: 0; }
+.inventory-card, .checkout-card { min-height: 0; height: 100%; overflow: hidden; }
+.inventory-card { container-type: inline-size; }
+.inventory-card, .checkout-card { display: flex; flex-direction: column; }
+.inventory-scroll { flex: 1; min-height: 0; max-height: none; }
+.inventory-card .mantine-Table-th { color: #5f6f84; font-size: 11px; letter-spacing: .04em; }
+.inventory-card .mantine-Table-td { border-bottom-color: #e5ebf0; }
+.inventory-product-cell { min-width: 0; }
+.inventory-product-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.inventory-inline-barcode { display: none; white-space: nowrap; }
+.inventory-variant-cell, .inventory-price-cell, .inventory-state-badge { white-space: nowrap; }
+.inventory-state-badge { max-width: none; }
+.selected-row { background: #e5f5f4; }
+.selected-row td:first-child { box-shadow: inset 3px 0 #00868e; }
+.inventory-actions { border-top: 1px solid #e2e8ee; padding-top: 14px; }
+.cart-scroll { flex: 1; min-height: 0; }
+.cart-item { border-bottom: 1px solid #e5ebf0; }
+.product-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; padding-bottom: 76px; }
+.product-main { min-width: 0; }
+.summary-card { position: sticky; top: 18px; min-height: 600px; }
+.summary-name { font-size: 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary-metric { border-bottom: 1px solid #e5ebf0; }
+.variant-table { overflow-x: auto; }
+.variant-table .mantine-Table-th { background: #f2f6fa; color: #5f6f84; font-size: 11px; letter-spacing: .04em; }
+.variant-table .mantine-Select-input { min-width: 120px; }
+.quantity-control .mantine-TextInput-root { flex: 1; min-width: 60px; }
+.quantity-control .mantine-TextInput-input { text-align: center; }
+.label-example { margin-top: 20px; }
+.label-card { width: 226px; margin: 0 auto; }
+.additional-toggle { min-height: 48px; color: #142235; font-weight: 700; }
+.additional-toggle .mantine-Button-inner { justify-content: flex-start; }
+.additional-toggle .mantine-Button-section[data-position="right"] { margin-left: auto; }
+.product-actions { position: fixed; z-index: 10; bottom: 0; right: 0; left: 252px; display: flex; align-items: center; justify-content: space-between; padding: 10px 28px; background: rgba(255,255,255,.97); }
+.labels-preview { min-height: 560px; }
+.labels-preview iframe { width: 100%; min-height: 520px; border: 0; background: #fff; }
+@media (max-width: 1100px) {
+  body { min-width: 0; }
+  .app-content { padding: 20px; }
+  .inventory-layout, .product-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+  .product-actions { left: 252px; padding: 10px 20px; }
+}
+@container (max-width: 700px) {
+  .inventory-card .inventory-barcode-column { display: none; }
+  .inventory-card .inventory-inline-barcode { display: block; }
+}
+@media (max-width: 1400px) {
+  .inventory-card .inventory-barcode-column { display: none; }
+  .inventory-card .inventory-inline-barcode { display: block; }
+}
+@media (max-width: 940px) {
+  .inventory-layout, .product-layout { grid-template-columns: 1fr; }
+  .summary-card { position: static; min-height: 0; }
+  .inventory-card, .checkout-card { min-height: 0; }
+  .product-actions { left: 252px; }
+}

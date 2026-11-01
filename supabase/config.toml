@@ -1,0 +1,37 @@
+project_id = "skus-lineboard"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[auth]
+enabled = true
+site_url = "io.lineboard.mobile://login-callback"
+additional_redirect_urls = ["io.lineboard.mobile://login-callback"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+
+# Free projects using the default mail provider cannot customize templates.
+# Keep the standard login links. Custom templates in supabase/templates may
+# be configured later together with the store's own SMTP provider.
+
+[functions.invite-member]
+verify_jwt = false
+
+[functions.commerce]
+verify_jwt = false
+
+[functions.sic-sync]
+verify_jwt = false
+
+[functions.sic-command-ack]
+verify_jwt = false

@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+mobile/config.json
+supabase/.temp/
+coverage/
+*.log
+.local/
+desktop/bin/
+desktop/obj/
+*.bak
