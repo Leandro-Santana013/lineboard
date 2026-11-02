@@ -10,6 +10,9 @@ namespace Lineboard {
  public sealed class SicStore {
   readonly string connectionString; readonly bool production; public readonly string Database; public readonly string InstanceId; public bool Production { get { return production; } }
   public event Action Changed;
+  internal Action PrepareCheckout;
+  internal Action<string,List<Dictionary<string,object>>> ClaimCheckout;
+  internal Action<string> ReleaseCheckout;
   public SicStore(string server,string database,string workspace,bool allowProduction=false) {
    var lab=System.Text.RegularExpressions.Regex.IsMatch(database,@"^LINEBOARD_LAB(_[A-Za-z0-9]+)?$");
    production=!lab;
@@ -52,19 +55,20 @@ namespace Lineboard {
   Dictionary<string,object> Execute(string kind,string requestId,object input,Func<SqlConnection,SqlTransaction,Guid,Dictionary<string,object>> action){
    var id=Validation.Id(requestId);var hash=Json.Hash(Json.Canonical(Json.Map(input)));
    using(var c=Open())using(var tx=c.BeginTransaction(IsolationLevel.Serializable)){
+    bool commitAttempted=false;
     try{
      NonQuery(c,tx,"DECLARE @result int; EXEC @result=sys.sp_getapplock @Resource=N'lineboard:writer',@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000; IF @result<0 THROW 51000,'WRITER_BUSY',1;");
      var previous=Rows(c,tx,"SELECT kind,request_hash,response FROM lineboard.Operations WHERE id=@id","@id",id).SingleOrDefault();
      if(previous!=null){
       if((string)previous["kind"]!=kind||(string)previous["request_hash"]!=hash)throw new DomainError("IDEMPOTENCY_CONFLICT");
-      var replay=Json.Read<Dictionary<string,object>>((string)previous["response"]);replay["replayed"]=true;tx.Commit();return replay;
+       var replay=Json.Read<Dictionary<string,object>>((string)previous["response"]);replay["replayed"]=true;commitAttempted=true;tx.Commit();return replay;
      }
      var result=action(c,tx,id);result["replayed"]=false;
      NonQuery(c,tx,"INSERT lineboard.Operations(id,kind,request_hash,response) VALUES(@id,@kind,@hash,@response)","@id",id,"@kind",kind,"@hash",hash,"@response",Json.Write(result));
-     tx.Commit();
+     commitAttempted=true;tx.Commit();
      try{var changed=Changed;if(changed!=null)changed();}catch{}
      return result;
-    }catch{tx.Rollback();throw;}
+     }catch{bool rolledBack=false;try{if(tx.Connection!=null){tx.Rollback();rolledBack=true;}else rolledBack=!commitAttempted;}catch{}if(rolledBack&&kind=="sale.confirm"&&ReleaseCheckout!=null){try{if(Convert.ToInt32(Scalar(c,null,"SELECT COUNT(*) FROM lineboard.Operations WHERE id=@id","@id",id))==0)ReleaseCheckout(requestId);}catch{}}throw;}
    }
   }
   static void Event(SqlConnection c,SqlTransaction tx,string kind,object payload){
@@ -134,12 +138,13 @@ namespace Lineboard {
     var unit=Unit(c,tx,draft.barcode);CheckQuantity(unit);if(Convert.ToDecimal(unit["quantity"])!=1)throw new DomainError("INSUFFICIENT_STOCK");
     if(Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM lineboard.Cart WHERE unit_id=@id","@id",Validation.Id((string)unit["stock_item_id"])))>0)throw new DomainError("ALREADY_IN_CART");
     NonQuery(c,tx,"INSERT lineboard.Cart(unit_id) VALUES(@id)","@id",Validation.Id((string)unit["stock_item_id"]));NonQuery(c,tx,"UPDATE lineboard.Settings SET cart_version=cart_version+1 WHERE id=1");
+    Event(c,tx,"cart.added",new{barcode=draft.barcode});
     return new Dictionary<string,object>{{"added",draft.barcode},{"version",Scalar(c,tx,"SELECT cart_version FROM lineboard.Settings WHERE id=1")}};
    });
   }
   public Dictionary<string,object> RemoveCart(CartDraft draft){
    draft.barcode=Validation.Barcode(draft.barcode);return Execute("cart.remove",draft.request_id,draft,(c,tx,op)=>{
-    NonQuery(c,tx,"DELETE cart FROM lineboard.Cart cart JOIN lineboard.Units u ON u.id=cart.unit_id WHERE u.barcode=@code","@code",draft.barcode);NonQuery(c,tx,"UPDATE lineboard.Settings SET cart_version=cart_version+1 WHERE id=1");return new Dictionary<string,object>{{"removed",draft.barcode}};
+    NonQuery(c,tx,"DELETE cart FROM lineboard.Cart cart JOIN lineboard.Units u ON u.id=cart.unit_id WHERE u.barcode=@code","@code",draft.barcode);NonQuery(c,tx,"UPDATE lineboard.Settings SET cart_version=cart_version+1 WHERE id=1");Event(c,tx,"cart.removed",new{barcode=draft.barcode});return new Dictionary<string,object>{{"removed",draft.barcode}};
    });
   }
   public Dictionary<string,object> Confirm(ConfirmDraft draft){
@@ -148,6 +153,7 @@ namespace Lineboard {
    var fiscalDocument=String.IsNullOrWhiteSpace(draft.fiscal_document)?null:draft.fiscal_document;
    if(fiscalDocument!=null&&fiscalDocument!="nfce"&&fiscalDocument!="nfe")throw new DomainError("INVALID_FISCAL_DOCUMENT");
    var fiscalStatus=fiscalDocument==null?"not_requested":"pending_adapter";
+   if(PrepareCheckout!=null)PrepareCheckout();
    return Execute("sale.confirm",draft.request_id,draft,(c,tx,operation)=>{
     if(Convert.ToInt64(Scalar(c,tx,"SELECT cart_version FROM lineboard.Settings WHERE id=1"))!=draft.version)throw new DomainError("CART_CHANGED");
     var items=Rows(c,tx,CatalogSql+" JOIN lineboard.Cart cart ON cart.unit_id=u.id ORDER BY u.barcode").Select(Enrich).ToList();if(items.Count==0)throw new DomainError("EMPTY_CART");
@@ -156,6 +162,7 @@ namespace Lineboard {
     object paymentId=Scalar(c,tx,"SELECT controle FROM dbo.TABEST7 WHERE recebimento=@name","@name",paymentNames[draft.payment]);
     object typeId=Scalar(c,tx,"SELECT controle FROM dbo.TABEST6 WHERE tipo=@name","@name",draft.payment=="pix"||draft.payment=="cash"?"Venda a vista":"Venda com cartão");
     if(paymentId==null||typeId==null)throw new DomainError("SIC_LOOKUP_MISSING");
+    if(ClaimCheckout!=null)ClaimCheckout(draft.request_id,items);
     int saleId=Convert.ToInt32(Scalar(c,tx,@"INSERT dbo.TABEST3A(data,hora,lktipo,nota,pedido,lkreceb,obs,venda,cancelada,valorfrete,cgi,tagcliente,comissao,comissaovend)
      OUTPUT inserted.controle VALUES(CONVERT(date,GETDATE()),CONVERT(time,GETDATE()),@type,0,0,@payment,@note,1,0,0,0,0,0,0)","@type",typeId,"@payment",paymentId,"@note","Lineboard "+operation));
     var id=Guid.NewGuid();
@@ -167,6 +174,7 @@ namespace Lineboard {
     NonQuery(c,tx,"INSERT dbo.TABEST3R(lkest3a,lkest7,valor,pgtroco) VALUES(@sale,@payment,@total,0)","@sale",saleId,"@payment",paymentId,"@total",total);
     NonQuery(c,tx,"INSERT lineboard.Sales(id,operation_id,sic_id,payment,total,fiscal_status) VALUES(@id,@op,@sale,@payment,@total,@fiscal_status); DELETE FROM lineboard.Cart; UPDATE lineboard.Settings SET cart_version=cart_version+1 WHERE id=1;","@id",id,"@op",operation,"@sale",saleId,"@payment",draft.payment,"@total",total,"@fiscal_status",fiscalStatus);
     var result=new Dictionary<string,object>{{"sale_id",id.ToString()},{"sic_sale_id",saleId},{"total",total},{"items",items},{"fiscal_document",fiscalDocument},{"fiscal_status",fiscalStatus},{"payment_recorded",true},{"payment_processed",false},{"native_sic_validation","pending"}};
+    if(ClaimCheckout!=null)result["checkout_request_id"]=draft.request_id;
     Event(c,tx,"sale.confirmed",result);return result;
    });
   }
@@ -181,6 +189,7 @@ namespace Lineboard {
    if(fiscalDocument!=null&&fiscalDocument!="nfce"&&fiscalDocument!="nfe")throw new DomainError("INVALID_FISCAL_DOCUMENT");
    var fiscalStatus=fiscalDocument==null?"not_requested":"pending_adapter";
    draft.reference=Validation.Text(draft.reference,120,false);
+   if(PrepareCheckout!=null)PrepareCheckout();
    return Execute("sale.confirm",draft.request_id,draft,(c,tx,operation)=>{
     var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);var items=new List<Dictionary<string,object>>();
     foreach(var line in draft.lines){
@@ -192,6 +201,7 @@ namespace Lineboard {
     object paymentId=Scalar(c,tx,"SELECT controle FROM dbo.TABEST7 WHERE recebimento=@name","@name",paymentNames[draft.payment]);
     object typeId=Scalar(c,tx,"SELECT controle FROM dbo.TABEST6 WHERE tipo=@name","@name",draft.payment=="pix"||draft.payment=="cash"?"Venda a vista":"Venda com cartão");
     if(paymentId==null||typeId==null)throw new DomainError("SIC_LOOKUP_MISSING");
+    if(ClaimCheckout!=null)ClaimCheckout(draft.request_id,items);
     var note="Lineboard "+operation+(String.IsNullOrWhiteSpace(draft.reference)?"":" "+draft.reference);
     int saleId=Convert.ToInt32(Scalar(c,tx,@"INSERT dbo.TABEST3A(data,hora,lktipo,nota,pedido,lkreceb,obs,venda,cancelada,valorfrete,cgi,tagcliente,comissao,comissaovend)
      OUTPUT inserted.controle VALUES(CONVERT(date,GETDATE()),CONVERT(time,GETDATE()),@type,0,0,@payment,@note,1,0,0,0,0,0,0)","@type",typeId,"@payment",paymentId,"@note",note));
@@ -204,6 +214,7 @@ namespace Lineboard {
     NonQuery(c,tx,"INSERT dbo.TABEST3R(lkest3a,lkest7,valor,pgtroco) VALUES(@sale,@payment,@total,0)","@sale",saleId,"@payment",paymentId,"@total",total);
     NonQuery(c,tx,"INSERT lineboard.Sales(id,operation_id,sic_id,payment,total,fiscal_status) VALUES(@id,@op,@sale,@payment,@total,@fiscal_status)","@id",id,"@op",operation,"@sale",saleId,"@payment",draft.payment,"@total",total,"@fiscal_status",fiscalStatus);
     var result=new Dictionary<string,object>{{"sale_id",id.ToString()},{"sic_sale_id",saleId},{"total",total},{"items",items},{"fiscal_document",fiscalDocument},{"fiscal_status",fiscalStatus},{"payment_recorded",true},{"payment_processed",false},{"native_sic_validation","pending"}};
+    if(ClaimCheckout!=null)result["checkout_request_id"]=draft.request_id;
     Event(c,tx,"sale.confirmed",result);return result;
    });
   }
@@ -219,6 +230,28 @@ namespace Lineboard {
   }
   public List<Dictionary<string,object>> History(){using(var c=Open())return Rows(c,null,"SELECT TOP(200) m.id,u.barcode,m.delta,m.reason,m.sic_document_id,m.created_at FROM lineboard.Movements m JOIN lineboard.Units u ON u.id=m.unit_id ORDER BY m.id DESC");}
   public List<Dictionary<string,object>> Outbox(){using(var c=Open())return Rows(c,null,"SELECT id,event_id,kind,payload,state,attempts,last_error,created_at FROM lineboard.Outbox ORDER BY id");}
+  public void QueueInitialSharedCart(){using(var c=Open())using(var tx=c.BeginTransaction(IsolationLevel.Serializable)){
+   NonQuery(c,tx,"DECLARE @r int; EXEC @r=sys.sp_getapplock @Resource=N'lineboard:writer',@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000; IF @r<0 THROW 51000,'WRITER_BUSY',1;");
+   if(Convert.ToInt64(Scalar(c,tx,"SELECT cloud_cart_version FROM lineboard.Settings WHERE id=1"))<0&&Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM lineboard.Outbox WHERE kind IN ('cart.added','cart.removed')"))==0)
+    foreach(var row in Rows(c,tx,"SELECT u.barcode FROM lineboard.Cart c JOIN lineboard.Units u ON u.id=c.unit_id"))Event(c,tx,"cart.added",new{barcode=Convert.ToString(row["barcode"])});
+   tx.Commit();
+  }}
+  public bool ImportSharedCart(Dictionary<string,object> cart){
+   if(cart==null||!cart.ContainsKey("version")||!cart.ContainsKey("barcodes"))throw new DomainError("INVALID_CLOUD_CART");
+   var version=Convert.ToInt64(cart["version"]);var codes=Json.Read<List<string>>(Json.Write(cart["barcodes"])).Select(Validation.Barcode).OrderBy(x=>x,StringComparer.Ordinal).ToList();
+   using(var c=Open())using(var tx=c.BeginTransaction(IsolationLevel.Serializable)){
+    NonQuery(c,tx,"DECLARE @r int; EXEC @r=sys.sp_getapplock @Resource=N'lineboard:writer',@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000; IF @r<0 THROW 51000,'WRITER_BUSY',1;");
+    if(Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM lineboard.Outbox WHERE state<>'sent'"))>0){tx.Commit();return false;}
+    var last=Convert.ToInt64(Scalar(c,tx,"SELECT cloud_cart_version FROM lineboard.Settings WHERE id=1"));if(version<last){tx.Commit();return false;}
+    var current=Rows(c,tx,"SELECT u.barcode FROM lineboard.Cart c JOIN lineboard.Units u ON u.id=c.unit_id ORDER BY u.barcode").Select(x=>Convert.ToString(x["barcode"])).ToList();
+    var changed=!current.SequenceEqual(codes);if(changed){
+     NonQuery(c,tx,"DELETE FROM lineboard.Cart");
+     foreach(var code in codes){var unit=Unit(c,tx,code);CheckQuantity(unit);if(Convert.ToInt32(unit["quantity"])!=1)throw new DomainError("CLOUD_LOCAL_CONFLICT");NonQuery(c,tx,"INSERT lineboard.Cart(unit_id) VALUES(@unit)","@unit",Validation.Id(Convert.ToString(unit["stock_item_id"])));}
+     NonQuery(c,tx,"UPDATE lineboard.Settings SET cart_version=cart_version+1 WHERE id=1");
+    }
+    NonQuery(c,tx,"UPDATE lineboard.Settings SET cloud_cart_version=@version WHERE id=1","@version",version);tx.Commit();return changed;
+   }
+  }
   public int QueueCatalogMissing(List<Dictionary<string,object>> cloudUnits){var remote=new HashSet<string>((cloudUnits??new List<Dictionary<string,object>>()).Select(x=>CloudText(x,"barcode")),StringComparer.OrdinalIgnoreCase);using(var c=Open())using(var tx=c.BeginTransaction(IsolationLevel.Serializable)){
    if(Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM lineboard.Outbox WHERE state='pending'"))>0){tx.Commit();return 0;}
    var rows=Rows(c,tx,CatalogSql+" ORDER BY u.barcode").Where(x=>!remote.Contains(CloudText(x,"barcode"))).ToList();foreach(var row in rows)Event(c,tx,"unit.upsert",row);tx.Commit();return rows.Count;
@@ -232,7 +265,7 @@ namespace Lineboard {
   }
   static HashSet<string> PendingBarcodes(SqlConnection c,SqlTransaction tx){
    var barcodes=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-   foreach(var row in Rows(c,tx,"SELECT kind,payload FROM lineboard.Outbox WHERE state='pending'")){
+   foreach(var row in Rows(c,tx,"SELECT kind,payload FROM lineboard.Outbox WHERE state<>'sent'")){
     try{
      var kind=Convert.ToString(row["kind"]);var payload=Json.Read<Dictionary<string,object>>(Convert.ToString(row["payload"]));object raw;
      if(kind=="unit.upsert")AddPendingBarcode(barcodes,payload);
@@ -246,6 +279,7 @@ namespace Lineboard {
    object raw;if(snapshot==null||!snapshot.TryGetValue("units",out raw)||raw==null)throw new DomainError("INVALID_CLOUD_SNAPSHOT");
    var units=Json.Read<List<Dictionary<string,object>>>(Json.Write(raw));int imported=0;int updated=0;int existing=0;int receipt=0;long maximumBarcode=0;
    using(var c=Open())using(var tx=c.BeginTransaction(IsolationLevel.Serializable)){
+    NonQuery(c,tx,"DECLARE @r int; EXEC @r=sys.sp_getapplock @Resource=N'lineboard:writer',@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000; IF @r<0 THROW 51000,'WRITER_BUSY',1;");
     var pending=PendingBarcodes(c,tx);
     foreach(var remote in units){
      var barcode=Validation.Barcode(CloudText(remote,"barcode"));var unitId=Validation.Id(CloudText(remote,"stock_item_id"));var productId=Validation.Id(CloudText(remote,"product_id"));var variantId=Validation.Id(CloudText(remote,"variant_id"));
@@ -265,7 +299,7 @@ namespace Lineboard {
        NonQuery(c,tx,"UPDATE dbo.TABEST1 SET quantidade=@quantity WHERE controle=@sic; INSERT dbo.TABINV(data,lkproduto,quantidade,acerto) VALUES(CONVERT(date,GETDATE()),@sic,@quantity,1)","@quantity",quantity,"@sic",existingSicId);
        NonQuery(c,tx,"INSERT lineboard.Movements(operation_id,unit_id,delta,reason) VALUES(@operation,@unit,@delta,'cloud_sync')","@operation",Guid.NewGuid(),"@unit",unitId,"@delta",quantity-currentQuantity);
       }
-      NonQuery(c,tx,"UPDATE lineboard.Units SET category=@category,color=@color,size=@size,location=@location,photo=@photo,expected_quantity=@quantity,revision=@revision,updated_at=SYSUTCDATETIME() WHERE id=@id","@category",fields.category,"@color",fields.color,"@size",fields.size,"@location",fields.location,"@photo",fields.photo,"@quantity",quantity,"@revision",revision,"@id",unitId);
+      NonQuery(c,tx,"UPDATE lineboard.Units SET variant_id=@variant,category=@category,color=@color,size=@size,location=@location,photo=@photo,expected_quantity=@quantity,revision=@revision,updated_at=SYSUTCDATETIME() WHERE id=@id","@variant",variantId,"@category",fields.category,"@color",fields.color,"@size",fields.size,"@location",fields.location,"@photo",fields.photo,"@quantity",quantity,"@revision",revision,"@id",unitId);
       updated++;continue;
      }
      if(Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM dbo.TABEST1 WHERE codigo=@barcode","@barcode",barcode))!=0)throw new DomainError("CLOUD_LOCAL_CONFLICT");

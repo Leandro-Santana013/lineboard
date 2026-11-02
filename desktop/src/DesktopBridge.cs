@@ -126,7 +126,7 @@ namespace Lineboard {
     case "labels.export": {
      ExactKeys(payload);if(saveLabels==null)throw new DomainError("LABEL_EXPORT_UNAVAILABLE");return new {saved=saveLabels(Labels.Html(LabelUnits(),50,30))};
     }
-    case "settings.info":ExactKeys(payload);return new {address=api.Address,sync_configured=sync.Configured,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,mode=store.Production?"production":"sandbox"};
+    case "settings.info":ExactKeys(payload);return new {address=api.Address,sync_configured=sync.Configured,sync_state=backgroundSync.State,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,mode=store.Production?"production":"sandbox"};
     case "pair.open":ExactKeys(payload);return new {address=api.Address,pin=api.OpenPairing(),expires_in_seconds=180};
     case "support.outbox":ExactKeys(payload);return new {items=store.Outbox()};
     default:throw new DomainError("UNKNOWN_ACTION");
@@ -165,6 +165,9 @@ namespace Lineboard {
     {"UNKNOWN_ACTION","A ação solicitada não está disponível."},
     {"LABEL_EXPORT_UNAVAILABLE","Não foi possível abrir o seletor de arquivo."},
     {"CART_CHANGED","O carrinho mudou. Confira os itens e confirme novamente."},
+    {"CHECKOUT_IN_PROGRESS","Outro computador está confirmando esta compra. Aguarde a conclusão."},
+    {"CLOUD_STOCK_CONFLICT","O estoque central mudou. Atualize o carrinho antes de confirmar."},
+    {"CLOUD_NOT_ACKNOWLEDGED","Não foi possível confirmar com a loja. Confira a conexão e tente novamente."},
     {"SIC_STOCK_CONFLICT","O saldo foi alterado fora do Lineboard. Confira a peça no SIC."},
     {"ALREADY_IN_CART","Essa peça já está no carrinho."},
     {"INSUFFICIENT_STOCK","A peça não está disponível."},

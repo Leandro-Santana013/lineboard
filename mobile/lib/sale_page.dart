@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -21,14 +23,83 @@ class _SalePageState extends State<SalePage> {
   PendingSale? pending;
   String? error, saleId;
   bool busy = false;
+  bool? shared;
+  List<CatalogItem> sharedItems = [];
+  Timer? refreshTimer;
+  bool refreshing = false;
+  String? sharedMessage;
   @override
   void initState() {
     super.initState();
     pending = widget.repo.pendingSale(widget.org);
+    loadMode();
+  }
+
+  Future<void> loadMode() async {
+    try {
+      final value = await widget.repo.usesSharedCart(widget.org);
+      if (!mounted) return;
+      setState(() {
+        shared = value;
+        error = null;
+      });
+      if (value) {
+        await refreshShared();
+        refreshTimer = Timer.periodic(
+          const Duration(seconds: 3),
+          (_) => refreshShared(),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = friendlyError(e));
+    }
+  }
+
+  Future<void> refreshShared() async {
+    if (refreshing || !mounted) return;
+    refreshing = true;
+    try {
+      final cart = await widget.repo.sharedCart(widget.org);
+      final items = (cart['items'] as List)
+          .map((x) => CatalogItem(Map<String, dynamic>.from(x)))
+          .toList();
+      if (mounted) {
+        setState(() {
+          sharedItems = items;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = friendlyError(e));
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  Future<void> sharedAction(Future<void> Function() action) async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+      sharedMessage = null;
+    });
+    try {
+      await action();
+      if (mounted) {
+        setState(
+          () => sharedMessage = 'Salvo no carrinho da loja. Os computadores conectados atualizarão automaticamente. Confirme a venda em um desktop.',
+        );
+      }
+      await refreshShared();
+    } catch (e) {
+      if (mounted) setState(() => error = friendlyError(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   @override
   void dispose() {
+    refreshTimer?.cancel();
     reference.dispose();
     super.dispose();
   }
@@ -37,6 +108,10 @@ class _SalePageState extends State<SalePage> {
     final code = await Navigator.of(context)
         .push<String>(MaterialPageRoute(builder: (_) => const ScanPage()));
     if (code == null || !mounted) return;
+    if (shared == true) {
+      await sharedAction(() => widget.repo.changeSharedCart(widget.org, code));
+      return;
+    }
     setState(() {
       busy = true;
       error = null;
@@ -124,6 +199,116 @@ class _SalePageState extends State<SalePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (shared == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Carrinho da loja')),
+        body: Center(
+          child: error == null
+              ? const CircularProgressIndicator()
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(error!),
+                    TextButton(
+                      onPressed: loadMode,
+                      child: const Text('Tentar novamente'),
+                    ),
+                  ],
+                ),
+        ),
+      );
+    }
+    if (shared == true) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Carrinho da loja')),
+        body: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const Text(
+              'Escaneie para todos os computadores da loja.',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: ink,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'A leitura adiciona a peça ao carrinho compartilhado. A compra só é concluída no desktop.',
+            ),
+            const SizedBox(height: 20),
+            if (pending != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'A tentativa anterior ainda está salva neste celular. Envie os itens ao carrinho da loja para confirmar no desktop.',
+                      ),
+                      for (final line in pending!.lines)
+                        Text(line['barcode'] as String),
+                      TextButton(
+                        onPressed: busy
+                            ? null
+                            : () => sharedAction(() async {
+                                await widget.repo.submitPendingToSharedCart(
+                                  widget.org,
+                                  pending!,
+                                );
+                                if (mounted) setState(() => pending = null);
+                              }),
+                        child: const Text('Enviar itens ao carrinho da loja'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            for (final item in sharedItems)
+              Card(
+                child: ListTile(
+                  title: Text(item.name),
+                  subtitle: Text(item.barcode),
+                  trailing: IconButton(
+                    tooltip: 'Remover do carrinho da loja',
+                    onPressed: busy
+                        ? null
+                        : () => sharedAction(
+                            () => widget.repo.changeSharedCart(
+                              widget.org,
+                              item.barcode,
+                              remove: true,
+                            ),
+                          ),
+                    icon: const Icon(Icons.remove_circle_outline),
+                  ),
+                ),
+              ),
+            if (sharedItems.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text('Nenhuma peça no carrinho da loja.'),
+              ),
+            if (sharedMessage != null)
+              Text(sharedMessage!, style: const TextStyle(color: sea)),
+            if (error != null)
+              Text(error!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: busy ? null : scan,
+              icon: const Icon(Icons.barcode_reader),
+              label: Text(
+                busy ? 'Enviando…' : 'Escanear para o carrinho da loja',
+              ),
+            ),
+            TextButton(
+              onPressed: busy ? null : refreshShared,
+              child: const Text('Atualizar carrinho'),
+            ),
+          ],
+        ),
+      );
+    }
     if (saleId != null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Saída registrada')),

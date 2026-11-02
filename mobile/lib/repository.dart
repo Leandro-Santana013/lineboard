@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'domain.dart';
 import 'pending_store.dart';
@@ -27,20 +28,81 @@ class Repository {
   bool cachedMemberships = false;
 
   Future<Map<String, dynamic>?> _boundConnection(String org) async {
-    try {
-      final row = await client
-          .from('sic_connections')
-          .select('instance_id')
-          .eq('organization_id', org)
-          .eq('enabled', true)
-          .maybeSingle()
-          .timeout(const Duration(seconds: 12));
-      return row == null ? null : Map<String, dynamic>.from(row);
-    } catch (_) {
-      // Older deployments and offline test doubles do not expose the bridge
-      // table yet; keep the existing transactional RPC path in that case.
-      return null;
+    final row = await client
+        .from('sic_connections')
+        .select('instance_id')
+        .eq('organization_id', org)
+        .eq('enabled', true)
+        .order('instance_id')
+        .limit(1)
+        .maybeSingle()
+        .timeout(const Duration(seconds: 12));
+    return row == null ? null : Map<String, dynamic>.from(row);
+  }
+
+  Future<bool> usesSharedCart(String org) async =>
+      await _boundConnection(org) != null;
+
+  Future<Map<String, dynamic>> sharedCart(String org) async {
+    _checkSession();
+    return Map<String, dynamic>.from(
+      await client
+          .rpc('read_sic_cart', params: {'p_org': org})
+          .timeout(const Duration(seconds: 12)),
+    );
+  }
+
+  Future<void> changeSharedCart(
+    String org,
+    String barcode, {
+    bool remove = false,
+  }) async {
+    _checkSession();
+    final code = canonicalBarcode(barcode);
+    if (!validBarcode(code)) throw const FormatException('INVALID_BARCODE');
+    final action = remove ? 'remove' : 'add';
+    final key = scope(org, 'cart_$action.$code');
+    var request = pendingStore.get(key);
+    if (request == null) {
+      request = const Uuid().v4();
+      await pendingStore.put(key, request);
     }
+    await client
+        .rpc(
+          'update_sic_cart',
+          params: {
+            'p_org': org,
+            'p_request_id': request,
+            'p_action': action,
+            'p_barcode': code,
+          },
+        )
+        .timeout(const Duration(seconds: 15));
+    await pendingStore.remove(key);
+  }
+
+  Future<void> submitPendingToSharedCart(String org, PendingSale sale) async {
+    // Preserve the old pending sale until every item has a durable cart receipt.
+    for (final line in sale.lines) {
+      if (line['quantity'] != 1) throw StateError('INVALID_LINES');
+      final code = canonicalBarcode(line['barcode'] as String);
+      final request = const Uuid().v5(
+        Namespace.url.value,
+        '$org:${sale.key}:$code',
+      );
+      await client
+          .rpc(
+            'update_sic_cart',
+            params: {
+              'p_org': org,
+              'p_request_id': request,
+              'p_action': 'add',
+              'p_barcode': code,
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+    }
+    await clearPendingSale(org);
   }
 
   Future<Map<String, dynamic>> _commandRow(
@@ -73,6 +135,7 @@ class Repository {
       }
       done.complete(row);
     }
+
     channel.onPostgresChanges(
       event: PostgresChangeEvent.all,
       schema: 'public',
@@ -102,16 +165,18 @@ class Repository {
     final binding = await _boundConnection(org);
     if (binding == null) return null;
     final queued = Map<String, dynamic>.from(
-      await client.rpc(
-        'queue_sic_command',
-        params: {
-          'p_org': org,
-          'p_request_id': requestId,
-          'p_instance_id': binding['instance_id'],
-          'p_kind': kind,
-          'p_payload': payload,
-        },
-      ).timeout(const Duration(seconds: 15)),
+      await client
+          .rpc(
+            'queue_sic_command',
+            params: {
+              'p_org': org,
+              'p_request_id': requestId,
+              'p_instance_id': binding['instance_id'],
+              'p_kind': kind,
+              'p_payload': payload,
+            },
+          )
+          .timeout(const Duration(seconds: 15)),
     );
     return _waitForCommand(org, queued['command_id'] as String);
   }
@@ -250,22 +315,27 @@ class Repository {
     );
     if (queued != null) {
       final result = queued['result'];
-      if (queued['status'] != 'completed' || result is! Map || result['product_id'] == null) {
-        throw StateError(queued['error_code'] as String? ?? 'SIC_COMMAND_FAILED');
+      if (queued['status'] != 'completed' ||
+          result is! Map ||
+          result['product_id'] == null) {
+        throw StateError(
+          queued['error_code'] as String? ?? 'SIC_COMMAND_FAILED',
+        );
       }
       return Map<String, dynamic>.from(result);
     }
-    final productId = await client
-            .rpc(
-              'create_product',
-              params: {
-                'p_org': org,
-                'p_request_id': pending['key'],
-                'p_product': pending['product'],
-              },
-            )
-            .timeout(const Duration(seconds: 25))
-        as String;
+    final productId =
+        await client
+                .rpc(
+                  'create_product',
+                  params: {
+                    'p_org': org,
+                    'p_request_id': pending['key'],
+                    'p_product': pending['product'],
+                  },
+                )
+                .timeout(const Duration(seconds: 25))
+            as String;
     return {'product_id': productId};
   }
 
@@ -289,19 +359,16 @@ class Repository {
 
   Future<Map<String, dynamic>> sendSale(String org, PendingSale sale) async {
     _checkSession();
-    final queued = await _queueForSic(
-      org,
-      sale.key,
-      'cart.confirm',
-      {
-        'lines': sale.lines,
-        'reference': sale.reference,
-      },
-    );
+    final queued = await _queueForSic(org, sale.key, 'cart.confirm', {
+      'lines': sale.lines,
+      'reference': sale.reference,
+    });
     if (queued != null) {
       final result = queued['result'];
       if (queued['status'] != 'completed' || result is! Map) {
-        throw StateError(queued['error_code'] as String? ?? 'SIC_COMMAND_FAILED');
+        throw StateError(
+          queued['error_code'] as String? ?? 'SIC_COMMAND_FAILED',
+        );
       }
       return Map<String, dynamic>.from(result);
     }

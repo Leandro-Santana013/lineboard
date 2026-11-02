@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, realpath } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -70,4 +70,23 @@ test('native Postgres: two concurrent submissions with same key yield one sale',
   assert.equal(results[0].rows[0].result.sale_id,results[1].rows[0].result.sale_id);
   assert.deepEqual(results.map(r=>r.rows[0].result.replayed).sort(),[false,true]);
   assert.equal((await setup.query('select quantity from stock_items where barcode=$1',[barcode])).rows[0].quantity,2);
+});
+
+test('native Postgres: two store desktops racing to confirm a shared cart get exactly one claim',async()=>{
+  const folder=new URL('../supabase/migrations/',import.meta.url);
+  for(const file of (await readdir(folder)).filter(x=>x.endsWith('.sql')&&!x.startsWith('202610220001')).sort())await setup.query(await readFile(new URL(file,folder),'utf8'));
+  const sharedOrg=randomUUID(),hash='f'.repeat(64),sources=[randomUUID(),randomUUID()],requests=[randomUUID(),randomUUID()];
+  await setup.query("insert into organizations(id,name) values($1,'Shared race')",[sharedOrg]);
+  await setup.query("insert into memberships values($1,$2,'admin')",[sharedOrg,user]);
+  await clients[0].query("select add_integration_key($1,'Race',$2)",[sharedOrg,hash]);
+  for(const source of sources)await setup.query('select switch_sic_connection($1,$2)',[hash,source]);
+  const item={stock_item_id:randomUUID(),product_id:randomUUID(),variant_id:randomUUID(),barcode:'SLB-900001000001',name:'Concurrent shared piece',quantity:1,expected_quantity:1,revision:1};
+  await setup.query('select apply_sic_event($1,$2)',[hash,JSON.stringify({event_id:randomUUID(),instance_id:sources[0],mode:'production',kind:'unit.upsert',payload:item})]);
+  await clients[0].query('select update_sic_cart($1,$2,$3,$4)',[sharedOrg,randomUUID(),'add',item.barcode]);
+  for(const client of clients){await client.query('reset role');await client.query('set role service_role');}
+  const results=await Promise.allSettled(clients.map((client,i)=>client.query('select claim_sic_checkout($1,$2,$3,$4)',[hash,sources[i],requests[i],JSON.stringify([item])])));
+  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
+  assert.match(results.find(x=>x.status==='rejected').reason.message,/CHECKOUT_IN_PROGRESS/);
+  assert.equal((await setup.query('select count(*)::int n from sic_checkout_claims where organization_id=$1',[sharedOrg])).rows[0].n,1);
+  assert.equal((await setup.query('select quantity from stock_items where id=$1',[item.stock_item_id])).rows[0].quantity,1);
 });

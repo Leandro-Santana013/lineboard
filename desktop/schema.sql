@@ -42,3 +42,6 @@ END;
 
 IF OBJECT_ID('lineboard.Units') IS NOT NULL AND COL_LENGTH('lineboard.Units','category') IS NULL
   ALTER TABLE lineboard.Units ADD category nvarchar(40) NOT NULL CONSTRAINT DF_lineboard_Units_category DEFAULT '' WITH VALUES;
+
+IF COL_LENGTH('lineboard.Settings','cloud_cart_version') IS NULL
+  ALTER TABLE lineboard.Settings ADD cloud_cart_version bigint NOT NULL CONSTRAINT DF_lineboard_cloud_cart_version DEFAULT -1 WITH VALUES;

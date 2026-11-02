@@ -500,13 +500,14 @@ function SettingsPage() {
     setState((current) => ({ ...current, error: null }));
     callHost('settings.info', {}).then((info) => setState({ info, error: null })).catch((error) => setState({ info: null, error }));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); const timer = window.setInterval(load, 5000); return () => window.clearInterval(timer); }, []);
   const info = state.info;
-  const bridgeState = valueText(info && info.realtime_state);
-  const status = bridgeState === 'listening' ? { label: 'Conectado', color: 'teal' }
-    : info && info.realtime_configured ? { label: 'Conectando', color: 'yellow' }
-      : info && info.sync_configured ? { label: 'Ativação pendente', color: 'yellow' }
-        : { label: 'Aguardando configuração', color: 'gray' };
+  const syncStatus = valueText(info && info.sync_state);
+  const status = info && info.sync_configured
+    ? syncStatus === 'up_to_date' ? { label: 'Loja sincronizada', color: 'teal' }
+      : syncStatus === 'conflict' ? { label: 'Conflito para conferir', color: 'red' }
+        : { label: 'Sincronização pendente', color: 'yellow' }
+    : { label: 'Aguardando configuração', color: 'gray' };
   return <>
     <PageHeading title="Configurações" description="O sistema trabalha em segundo plano para manter a loja atualizada." />
     {state.error ? <Alert color="red" mb="md" title="Não foi possível carregar as configurações"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : null}

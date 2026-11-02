@@ -478,7 +478,8 @@ class _HomePageState extends State<HomePage> {
           ActionCard(
             icon: Icons.barcode_reader,
             title: 'Registrar saída',
-            subtitle: 'Escaneie os itens vendidos e confirme a venda.',
+            subtitle:
+                'Envie as peças ao carrinho da loja e confirme no desktop.',
             primary: true,
             onTap: () => open(SalePage(widget.repo, org)),
           ),

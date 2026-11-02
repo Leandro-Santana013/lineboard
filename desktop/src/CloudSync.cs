@@ -8,7 +8,9 @@ namespace Lineboard {
  public sealed class CloudSync {
   readonly SicStore store;readonly Func<Dictionary<string,object>,Dictionary<string,object>> send;readonly Func<Dictionary<string,object>> pull;readonly object gate=new object();
   public readonly bool Configured;
-  public CloudSync(SicStore store):this(store,CreateSender(),CreatePuller(store)){}
+  public CloudSync(SicStore store):this(store,CreateSender(),CreatePuller(store)){
+   if(Configured){store.PrepareCheckout=()=>Reconcile();store.ClaimCheckout=(request,items)=>{var result=send(new Dictionary<string,object>{{"kind","checkout.claim"},{"instance_id",store.InstanceId},{"request_id",request},{"items",items}});if(Convert.ToString(result["state"])!="claimed")throw new DomainError("CHECKOUT_FAILED");};store.ReleaseCheckout=request=>send(new Dictionary<string,object>{{"kind","checkout.release"},{"instance_id",store.InstanceId},{"request_id",request}});}
+  }
   internal CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender){this.store=store;send=sender;pull=null;Configured=sender!=null;}
   CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender,Func<Dictionary<string,object>> receiver){this.store=store;send=sender;pull=receiver;Configured=sender!=null;}
   static string Env(string name){var value=Environment.GetEnvironmentVariable(name);if(!String.IsNullOrEmpty(value))return value;value=Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.User);if(!String.IsNullOrEmpty(value))return value;return Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.Machine);}
@@ -22,7 +24,7 @@ namespace Lineboard {
     var request=(HttpWebRequest)WebRequest.Create(uri);request.Method="POST";request.AllowAutoRedirect=false;request.Timeout=15000;request.ContentType="application/json";request.Headers["Authorization"]="Bearer "+token;
     var bytes=Encoding.UTF8.GetBytes(Json.Write(payload));request.ContentLength=bytes.Length;using(var stream=request.GetRequestStream())stream.Write(bytes,0,bytes.Length);
     try{using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream()))return Json.Read<Dictionary<string,object>>(reader.ReadToEnd());}
-    catch(WebException error){if(error.Response!=null)error.Response.Dispose();throw new DomainError("CLOUD_NOT_ACKNOWLEDGED");}
+     catch(WebException error){var code="CLOUD_NOT_ACKNOWLEDGED";if(error.Response!=null){using(var response=error.Response)using(var reader=new StreamReader(response.GetResponseStream())){try{var body=Json.Read<Dictionary<string,object>>(reader.ReadToEnd());var value=Convert.ToString(body["error"]);if(value=="CHECKOUT_IN_PROGRESS"||value=="CART_CHANGED"||value=="CLOUD_STOCK_CONFLICT"||value=="INSUFFICIENT_STOCK"||value=="CHECKOUT_CLAIM_REQUIRED")code=value;}catch{}}}throw new DomainError(code);}
    };
   }
   static Func<Dictionary<string,object>> CreatePuller(SicStore store){
@@ -38,11 +40,14 @@ namespace Lineboard {
     catch(WebException error){if(error.Response!=null)error.Response.Dispose();throw new DomainError("CLOUD_NOT_ACKNOWLEDGED");}
    };
   }
-  public Dictionary<string,object> Reconcile(){
-    if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int imported=0;int updated=0;
-    if(pull!=null){var snapshot=pull();if(!snapshot.ContainsKey("state")||Convert.ToString(snapshot["state"])!="snapshot")throw new DomainError("INVALID_CLOUD_SNAPSHOT");if(!String.Equals(Convert.ToString(snapshot["instance_id"]),store.InstanceId,StringComparison.OrdinalIgnoreCase))throw new DomainError("INVALID_CLOUD_SNAPSHOT");var result=store.ImportCloudSnapshot(snapshot);imported=Convert.ToInt32(result["imported"]);if(result.ContainsKey("updated"))updated=Convert.ToInt32(result["updated"]);object raw;var cloudUnits=snapshot.TryGetValue("units",out raw)?Json.Read<List<Dictionary<string,object>>>(Json.Write(raw)):new List<Dictionary<string,object>>();store.QueueCatalogMissing(cloudUnits);}
-    var pushed=Push();pushed["imported"]=imported;pushed["updated"]=updated;return pushed;
-  }
+  Dictionary<string,object> PullSnapshot(){var snapshot=pull();if(!snapshot.ContainsKey("state")||Convert.ToString(snapshot["state"])!="snapshot"||!String.Equals(Convert.ToString(snapshot["instance_id"]),store.InstanceId,StringComparison.OrdinalIgnoreCase))throw new DomainError("INVALID_CLOUD_SNAPSHOT");return snapshot;}
+  public Dictionary<string,object> Reconcile(){lock(gate){
+   if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int imported=0;int updated=0;bool cartUpdated=false;
+   if(pull!=null){store.QueueInitialSharedCart();var snapshot=PullSnapshot();var result=store.ImportCloudSnapshot(snapshot);imported=Convert.ToInt32(result["imported"]);updated=Convert.ToInt32(result["updated"]);object raw;var cloudUnits=snapshot.TryGetValue("units",out raw)?Json.Read<List<Dictionary<string,object>>>(Json.Write(raw)):new List<Dictionary<string,object>>();store.QueueCatalogMissing(cloudUnits);if(snapshot.TryGetValue("cart",out raw))cartUpdated=store.ImportSharedCart(Json.Map(raw));}
+   var pushed=Push();
+   if(pull!=null&&Convert.ToInt32(pushed["sent"])>0){var snapshot=PullSnapshot();var result=store.ImportCloudSnapshot(snapshot);imported+=Convert.ToInt32(result["imported"]);updated+=Convert.ToInt32(result["updated"]);object raw;if(snapshot.TryGetValue("cart",out raw))cartUpdated=store.ImportSharedCart(Json.Map(raw))||cartUpdated;}
+   pushed["imported"]=imported;pushed["updated"]=updated;pushed["cart_updated"]=cartUpdated;return pushed;
+  }}
   public Dictionary<string,object> Push(){lock(gate){
    if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int sent=0;
    foreach(var row in store.Outbox()){

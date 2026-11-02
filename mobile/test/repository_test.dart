@@ -123,12 +123,100 @@ void main() {
     await client.dispose();
     transport.close();
   });
+  test('shared cart detects a store with multiple desktops without selecting a phone target', () async {
+    SharedPreferences.setMockInitialValues({});
+    final transport = MockClient((request) async {
+      expect(request.url.path, endsWith('/sic_connections'));
+      expect(request.url.queryParameters['limit'], '1');
+      expect(request.url.queryParameters['organization_id'], 'eq.org-a');
+      return http.Response(
+        '[{"instance_id":"desktop-a"}]',
+        200,
+        headers: {'content-type': 'application/json'},
+        request: request,
+      );
+    });
+    final client = await sessionClient(transport);
+    final store = await PendingStore.open(path: inMemoryDatabasePath);
+    final repo = Repository(
+      client,
+      await SharedPreferences.getInstance(),
+      store,
+    );
+    expect(await repo.usesSharedCart('org-a'), isTrue);
+    await store.database.close();
+    await client.dispose();
+    transport.close();
+  });
+  test('a failed shared scan retries the exact request and never submits a sale or targets a desktop', () async {
+    SharedPreferences.setMockInitialValues({});
+    final requests = <Map<String, dynamic>>[];
+    final transport = MockClient((request) async {
+      expect(request.url.path, endsWith('/rpc/update_sic_cart'));
+      final body = Map<String, dynamic>.from(jsonDecode(request.body));
+      requests.add(body);
+      expect(body.containsKey('p_instance_id'), isFalse);
+      expect(body['p_org'], 'org-a');
+      if (requests.length == 1) throw const SocketException('lost reply');
+      return http.Response(
+        '{"state":"saved"}',
+        200,
+        headers: {'content-type': 'application/json'},
+        request: request,
+      );
+    });
+    final client = await sessionClient(transport);
+    final store = await PendingStore.open(path: inMemoryDatabasePath);
+    final repo = Repository(
+      client,
+      await SharedPreferences.getInstance(),
+      store,
+    );
+    await expectLater(
+      repo.changeSharedCart('org-a', 'SLB-900000000022'),
+      throwsA(isA<SocketException>()),
+    );
+    await repo.changeSharedCart('org-a', 'SLB-900000000022');
+    expect(requests[0], requests[1]);
+    expect(store.get(repo.scope('org-a', 'cart_add.SLB-900000000022')), isNull);
+    await store.database.close();
+    await client.dispose();
+    transport.close();
+  });
+  test('a connection lookup failure is not disguised as an unbound cloud-only store', () async {
+    SharedPreferences.setMockInitialValues({});
+    final transport = MockClient(
+      (request) async => throw const SocketException('offline'),
+    );
+    final client = await sessionClient(transport);
+    final store = await PendingStore.open(path: inMemoryDatabasePath);
+    final repo = Repository(
+      client,
+      await SharedPreferences.getInstance(),
+      store,
+    );
+    await expectLater(
+      repo.usesSharedCart('org-a'),
+      throwsA(isA<SocketException>()),
+    );
+    await store.database.close();
+    await client.dispose();
+    transport.close();
+  });
   test(
     'sale retry sends identical key and payload to the transactional RPC',
     () async {
       SharedPreferences.setMockInitialValues({});
       final requests = <Map<String, dynamic>>[];
       final transport = MockClient((request) async {
+        if (request.url.path.endsWith('/sic_connections')) {
+          return http.Response(
+            '[]',
+            200,
+            headers: {'content-type': 'application/json'},
+            request: request,
+          );
+        }
         expect(request.url.path, contains('/rpc/record_physical_sale'));
         requests.add(jsonDecode(request.body));
         return http.Response(

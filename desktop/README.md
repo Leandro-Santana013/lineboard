@@ -168,7 +168,26 @@ O script pede o token em campo oculto, configura as variáveis na máquina para
 todos os usuários do Windows e executa o bootstrap inicial. O token não é gravado no projeto,
 no Git nem em arquivo de log; depois disso, basta abrir o `Lineboard.exe`.
 
-O servidor deriva a organização da credencial, registra a instalação ativa,
+O servidor deriva a organização da credencial e registra cada instalação da loja.
+Todos os computadores dessa organização leem o mesmo estoque e o mesmo carrinho
+persistido no Supabase. O celular envia a leitura ao carrinho da loja sem escolher
+um computador; a leitura não baixa estoque. A confirmação final é feita no desktop.
+Os desktops consultam o estado central a cada 5 segundos, e as alterações locais
+disparam envio imediato. Computadores fechados recuperam o estado ao abrir.
+
+O novo aplicativo mobile inclui uma ação para encaminhar ao carrinho compartilhado
+os itens de uma tentativa antiga que exibia `DESKTOP_CONFIRMATION_REQUIRED`.
+Atualize o APK e o `Lineboard.exe` em todos os computadores para usar este fluxo.
+Uma confirmação solicita um bloqueio central antes da transação local, impedindo
+duas confirmações simultâneas da mesma compra nos desktops atualizados. Se um
+resultado local ficar incerto, o bloqueio é mantido para reconciliação, sem expirar
+automaticamente e liberar a peça para outra venda.
+
+Cada organização mantém seu estoque e carrinho isolados. O modo atual compartilha
+o carrinho dentro da loja; roteamento para caixas específicos requer uma configuração
+própria futura e não usa o usuário do Windows como identidade da empresa.
+
+O snapshot central
 preserva IDs, revisões e referências das peças e aplica a mesma operação de baixa
 transacional usada pelo estoque central. Ao abrir uma instalação nova, o snapshot
 é importado em uma transação local do SIC. Repetir um evento retorna seu resultado.
@@ -176,14 +195,17 @@ Se o saldo da nuvem já mudou, o evento fica em conflito e interrompe a fila;
 não ressuscita estoque nem repete uma venda. Os dados financeiros e fiscais por
 peça ficam em `sic_unit_links.snapshot`, protegidos por RLS, e não são públicos.
 
-O desktop envia eventos locais à nuvem automaticamente em segundo plano e agora
-também recebe comandos do celular por uma fila `sic_commands` no Supabase Realtime.
-O comando é aplicado no sandbox local com a mesma idempotência do caixa e o
-resultado volta pela Edge Function `sic-command-ack`. Em producao, o comando e
-aplicado diretamente ao `SICNET` local antes da confirmacao. A venda mobile
-resolve todos os itens e grava cabecalho, linhas, baixa e auditoria em uma unica
-transacao; repeticoes usam a mesma chave e nao duplicam a operacao. O e-commerce
-continua fora desta etapa.
+O carrinho compartilhado usa as RPCs `read_sic_cart` e `update_sic_cart` no celular
+e o snapshot autenticado da Edge Function `sic-sync` nos desktops. Este fluxo
+não depende das variáveis opcionais `LINEBOARD_REALTIME_*`: o recebimento automático
+funciona com o pareamento cloud já instalado. O intervalo de leitura é 5 segundos;
+não há servidor Socket.IO neste projeto.
+
+A ponte opcional de comandos `sic_commands`/Supabase Realtime continua disponível
+para comandos direcionados, como cadastro pelo adaptador, com resposta pela Edge
+Function `sic-command-ack`. O comando mobile `cart.confirm` foi recusado no servidor:
+o celular prepara o carrinho e a compra só é confirmada pelo operador no desktop.
+O e-commerce continua fora desta etapa.
 
 A ponte bidirecional precisa da migration `202610310001_sic_command_bridge.sql`
 e da função `supabase/functions/sic-command-ack` publicadas no projeto. Depois

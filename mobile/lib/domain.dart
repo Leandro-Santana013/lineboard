@@ -71,24 +71,27 @@ String encodeJson(Object value) => jsonEncode(value);
 String friendlyError(Object error) {
   final message = error.toString();
   const translations = {
-    'otp_disabled':
-        'OTP desativado no Supabase. Ative o provedor de e-mail ou use a ativacao do aparelho.',
-    'email_provider_disabled':
-        'Provedor de e-mail desativado no Supabase. Ative-o antes de solicitar um codigo.',
-    'Signups not allowed for otp':
-        'OTP desativado no Supabase. Ative o provedor de e-mail ou use a ativacao do aparelho.',
+    'otp_disabled': 'OTP desativado no Supabase. Ative o provedor de e-mail ou use a ativacao do aparelho.',
+    'email_provider_disabled': 'Provedor de e-mail desativado no Supabase. Ative-o antes de solicitar um codigo.',
+    'Signups not allowed for otp': 'OTP desativado no Supabase. Ative o provedor de e-mail ou use a ativacao do aparelho.',
     'LOCAL_CATALOG_REQUIRED':
         'Esta loja usa o SIC local. Cadastre pelo modo de conexão ao desktop.',
     'DESKTOP_CONFIRMATION_REQUIRED':
         'Confira e confirme esta venda no aplicativo desktop.',
+    'CHECKOUT_IN_PROGRESS':
+        'Um computador está confirmando esta compra. Aguarde a conclusão.',
+    'CART_CHANGED':
+        'O carrinho da loja mudou. Atualize e confira os itens novamente.',
     'SESSION_CHANGED':
         'Sua sessão mudou. Entre novamente antes de retomar a operação.',
     'INSUFFICIENT_STOCK': 'Saída recusada: um dos itens não está disponível. Confira no sistema Windows.',
     'BARCODE_NOT_FOUND': 'Código não encontrado nesta loja.',
     'IDEMPOTENCY_CONFLICT': 'Esta operação já foi enviada com outros dados. Confira antes de tentar novamente.',
     'SIC_COMMAND_FAILED': 'O computador da loja não confirmou a operação. Retome para conferir o resultado.',
-    'SIC_STOCK_CONFLICT': 'O estoque do computador mudou. Confira a operação no desktop.',
-    'SIC_CONNECTION_NOT_REGISTERED': 'O computador da loja ainda não está conectado ao Supabase.',
+    'SIC_STOCK_CONFLICT':
+        'O estoque do computador mudou. Confira a operação no desktop.',
+    'SIC_CONNECTION_NOT_REGISTERED':
+        'O computador da loja ainda não está conectado ao Supabase.',
     'PRICE_REQUIRED': 'Informe um preço de venda antes de concluir.',
     'INVALID_PAYMENT': 'Escolha uma forma de pagamento válida.',
     'FORBIDDEN': 'Seu acesso a esta loja não permite essa operação.',
