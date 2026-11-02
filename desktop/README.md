@@ -161,9 +161,11 @@ ou no controle de versão. A URL deve ser HTTPS e terminar em
 `/functions/v1/sic-sync` no domínio do projeto Supabase. `--sync-now` executa
 o mesmo ciclo imediatamente para diagnóstico ou carga inicial.
 
-Em uma nova máquina, execute uma vez `.\desktop\scripts\configure-cloud.ps1`.
-O script pede o token em campo oculto, configura as variáveis no usuário atual
-do Windows e executa o bootstrap inicial. O token não é gravado no projeto,
+Em uma nova máquina, abra o PowerShell como Administrador e execute uma vez
+`.\desktop\scripts\configure-cloud.ps1`. Se o SIC estiver no SQL Express,
+informe a instância, por exemplo: `.\desktop\scripts\configure-cloud.ps1 -Server '.\SQLEXPRESS'`.
+O script pede o token em campo oculto, configura as variáveis na máquina para
+todos os usuários do Windows e executa o bootstrap inicial. O token não é gravado no projeto,
 no Git nem em arquivo de log; depois disso, basta abrir o `Lineboard.exe`.
 
 O servidor deriva a organização da credencial, registra a instalação ativa,

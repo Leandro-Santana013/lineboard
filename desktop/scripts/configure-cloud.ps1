@@ -5,7 +5,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$configuredServer = if ($Server) { $Server.Trim() } else { [Environment]::GetEnvironmentVariable('LINEBOARD_SIC_SERVER', [EnvironmentVariableTarget]::User) }
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Abra o PowerShell como Administrador para instalar o pareamento cloud para todos os usuarios desta maquina.'
+}
+
+$configuredServer = if ($Server) { $Server.Trim() } else { [Environment]::GetEnvironmentVariable('LINEBOARD_SIC_SERVER', [EnvironmentVariableTarget]::Machine) }
+if (-not $configuredServer) { $configuredServer = [Environment]::GetEnvironmentVariable('LINEBOARD_SIC_SERVER', [EnvironmentVariableTarget]::User) }
 if (-not $configuredServer) { $configuredServer = '(localdb)\MSSQLLocalDB' }
 
 $uri = $null
@@ -17,7 +24,8 @@ if (-not [Uri]::TryCreate($SyncUrl, [UriKind]::Absolute, [ref]$uri) -or
     throw 'SyncUrl deve ser uma URL HTTPS /functions/v1/sic-sync de um projeto Supabase.'
 }
 
-$token = [Environment]::GetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', [EnvironmentVariableTarget]::User)
+$token = [Environment]::GetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', [EnvironmentVariableTarget]::Machine)
+if (-not $token) { $token = [Environment]::GetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', [EnvironmentVariableTarget]::User) }
 $token = if ($token) { $token.Trim() } else { $null }
 if ($token) {
     if (($token.StartsWith("'") -and $token.EndsWith("'")) -or
@@ -45,18 +53,26 @@ if (-not $token -or $token -cnotmatch '^slb_live_[a-f0-9]{64}$') {
         $token = $token.Substring(1, $token.Length - 2).Trim()
     }
 } else {
-    Write-Host 'Usando o token cloud ja salvo no usuario atual do Windows.'
+    Write-Host 'Usando o token cloud ja salvo nesta maquina.'
 }
 
 if ($token -cnotmatch '^slb_live_[a-f0-9]{64}$') {
     throw 'Token invalido. Ele deve seguir o formato slb_live_ mais 64 caracteres hexadecimais.'
 }
 
-[Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_URL', $SyncUrl, [EnvironmentVariableTarget]::User)
-[Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', $token, [EnvironmentVariableTarget]::User)
-[Environment]::SetEnvironmentVariable('LINEBOARD_SIC_SERVER', $configuredServer, [EnvironmentVariableTarget]::User)
+[Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_URL', $SyncUrl, [EnvironmentVariableTarget]::Machine)
+[Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', $token, [EnvironmentVariableTarget]::Machine)
+[Environment]::SetEnvironmentVariable('LINEBOARD_SIC_SERVER', $configuredServer, [EnvironmentVariableTarget]::Machine)
+# Remove duplicatas antigas do perfil para que nenhum valor antigo tenha precedencia.
+[Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_URL', $null, [EnvironmentVariableTarget]::User)
+[Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', $null, [EnvironmentVariableTarget]::User)
+[Environment]::SetEnvironmentVariable('LINEBOARD_SIC_SERVER', $null, [EnvironmentVariableTarget]::User)
+# O processo atual nao recebe automaticamente as variaveis recem-gravadas no Windows.
+$env:LINEBOARD_SYNC_URL = $SyncUrl
+$env:LINEBOARD_SYNC_TOKEN = $token
+$env:LINEBOARD_SIC_SERVER = $configuredServer
 $token = $null
-Write-Host ('Configuracao cloud salva no usuario atual do Windows. SIC server: {0}' -f $configuredServer)
+Write-Host ('Configuracao cloud salva para todos os usuarios desta maquina. SIC server: {0}' -f $configuredServer)
 
 if ($SkipInitialSync) {
     Write-Host 'Bootstrap inicial ignorado por -SkipInitialSync.'
