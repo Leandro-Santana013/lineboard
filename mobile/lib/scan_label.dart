@@ -20,10 +20,13 @@ class ScanPage extends StatefulWidget {
 class _ScanPageState extends State<ScanPage> {
   final controller = MobileScannerController(
     formats: [BarcodeFormat.code128],
-    detectionSpeed: DetectionSpeed.noDuplicates,
+    detectionSpeed: DetectionSpeed.normal,
+    autoZoom: true,
   );
   final manual = TextEditingController();
   bool accepted = false;
+  String guidance = 'Aponte para o código e mantenha o celular firme.';
+  DateTime? lastInvalidFeedback;
   @override
   void dispose() {
     controller.dispose();
@@ -31,15 +34,38 @@ class _ScanPageState extends State<ScanPage> {
     super.dispose();
   }
 
-  void accept(String code) {
+  Future<void> accept(String code, {bool manualEntry = false}) async {
     if (accepted) return;
     code = canonicalBarcode(code);
     if (!validBarcode(code)) {
-      toast(context, 'Use um código interno SLB com 12 dígitos.');
+      showInvalidFeedback();
+      if (manualEntry && mounted) {
+        toast(context, 'Use um código interno SLB com 12 dígitos.');
+      }
       return;
     }
     accepted = true;
-    Navigator.of(context).pop(code);
+    try {
+      await controller.stop();
+    } catch (_) {
+      // The decoded value remains valid even if the camera cannot stop cleanly.
+    }
+    if (mounted) Navigator.of(context).pop(code);
+  }
+
+  void showInvalidFeedback() {
+    final now = DateTime.now();
+    if (lastInvalidFeedback != null &&
+        now.difference(lastInvalidFeedback!) < const Duration(seconds: 2)) {
+      return;
+    }
+    lastInvalidFeedback = now;
+    if (mounted) {
+      setState(
+        () => guidance =
+            'Código visto, mas não é uma etiqueta Lineboard. Centralize o código inteiro.',
+      );
+    }
   }
 
   @override
@@ -65,12 +91,13 @@ class _ScanPageState extends State<ScanPage> {
                   controller: controller,
                   useAppLifecycleState: true,
                   onDetect: (capture) {
-                    for (final code in capture.barcodes) {
-                      if (code.rawValue != null &&
-                          validBarcode(code.rawValue!)) {
-                        accept(code.rawValue!);
-                        break;
-                      }
+                    final decision = selectBarcode(
+                      capture.barcodes.map((code) => code.rawValue),
+                    );
+                    if (decision.code != null) {
+                      accept(decision.code!);
+                    } else if (decision.sawValue) {
+                      showInvalidFeedback();
                     }
                   },
                   errorBuilder: (context, error) => Center(
@@ -115,7 +142,21 @@ class _ScanPageState extends State<ScanPage> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                const Text('Enquadre o código de barras dentro da marcação.'),
+                Text(
+                  guidance,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: lastInvalidFeedback == null
+                        ? null
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Evite reflexos e aproxime ou afaste devagar até o código ficar nítido.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12),
+                ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: manual,
@@ -124,11 +165,11 @@ class _ScanPageState extends State<ScanPage> {
                     labelText: 'Ou digite o código',
                     hintText: 'SLB-000000000001',
                     suffixIcon: IconButton(
-                      onPressed: () => accept(manual.text),
+                      onPressed: () => accept(manual.text, manualEntry: true),
                       icon: const Icon(Icons.arrow_forward),
                     ),
                   ),
-                  onSubmitted: accept,
+                  onSubmitted: (value) => accept(value, manualEntry: true),
                 ),
               ],
             ),
@@ -137,6 +178,25 @@ class _ScanPageState extends State<ScanPage> {
       ),
     ),
   );
+}
+
+class BarcodeSelection {
+  const BarcodeSelection({this.code, required this.sawValue});
+  final String? code;
+  final bool sawValue;
+}
+
+BarcodeSelection selectBarcode(Iterable<String?> values) {
+  var sawValue = false;
+  for (final rawValue in values) {
+    if (rawValue == null || rawValue.trim().isEmpty) continue;
+    sawValue = true;
+    final code = canonicalBarcode(rawValue);
+    if (validBarcode(code)) {
+      return BarcodeSelection(code: code, sawValue: true);
+    }
+  }
+  return BarcodeSelection(sawValue: sawValue);
 }
 
 class LabelPage extends StatefulWidget {

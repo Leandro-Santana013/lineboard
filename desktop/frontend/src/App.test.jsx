@@ -13,7 +13,7 @@ const unit = (overrides = {}) => ({
 
 function bootstrap() {
   const first = unit();
-  return { catalog: [first, unit({ stock_item_id: 'unit-2', barcode: 'SLB-000000000002', name: 'Calça jeans', color: 'Azul', size: '40', price: 129.9, internal_code: 'CAL-002' })], cart: { version: 3, items: [first], total: 69.9 }, mode: 'sandbox', sync_state: 'up_to_date' };
+  return { catalog: [first, unit({ stock_item_id: 'unit-2', barcode: 'SLB-000000000002', name: 'Calça jeans', color: 'Azul', size: '40', price: 129.9, internal_code: 'CAL-002' }), unit({ stock_item_id: 'unit-3', barcode: 'SLB-000000000003', name: 'Jaqueta leve', color: 'Verde', size: 'G', price: 159.9, internal_code: 'JAQ-003' })], cart: { version: 3, items: [first], total: 69.9 }, mode: 'sandbox', sync_state: 'up_to_date' };
 }
 
 function renderApp() {
@@ -22,8 +22,12 @@ function renderApp() {
 
 describe('Lineboard frontend', () => {
   let calls;
+  let delayNextCartAdd;
+  let releaseCartAdd;
   beforeEach(() => {
     calls = [];
+    delayNextCartAdd = false;
+    releaseCartAdd = null;
     vi.spyOn(window, 'open').mockImplementation(() => null);
     setBridgeMock(async ({ action, payload }) => {
       calls.push({ action, payload });
@@ -33,22 +37,86 @@ describe('Lineboard frontend', () => {
       if (action === 'labels.preview') return { data: { html: '<!doctype html><html><body>Etiqueta</body></html>' } };
       if (action === 'settings.info') return { data: { address: 'localhost:47831', sync_configured: false, mode: 'sandbox' } };
       if (action === 'pair.open') return { data: { address: 'localhost:47831', pin: '123456', expires_in_seconds: 180 } };
+      if (action === 'cart.add' && delayNextCartAdd) {
+        delayNextCartAdd = false;
+        await new Promise((resolve) => { releaseCartAdd = resolve; });
+      }
       return { data: { units: [] } };
     });
   });
   afterEach(() => { clearBridgeMock(); vi.restoreAllMocks(); });
 
-  it('renders the shell and marks a cart item as No caixa', async () => {
+  it('separates estoque and caixa into dedicated navigation views', async () => {
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     expect(within(screen.getByRole('row', { name: /Camiseta básica/ })).getByText('No caixa')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Novo produto' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar venda e emitir nota' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    expect(await screen.findByRole('heading', { name: 'Caixa' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Leitura de código de barras' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Código de barras da peça' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir estoque' })).toBeInTheDocument();
+    expect(screen.getByText('COMANDA ATUAL')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Venda em aberto' })).toBeInTheDocument();
+    const payment = screen.getByRole('region', { name: 'Pagamento' });
+    expect(within(payment).getByRole('button', { name: 'Pix' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(payment).getByText('Subtotal').nextElementSibling).toHaveTextContent('R$ 69,90');
+    expect(within(payment).getByText('Descontos').nextElementSibling).toHaveTextContent('R$ 0,00');
+    expect(within(payment).getByText('Total da venda').nextElementSibling).toHaveTextContent('R$ 69,90');
     expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('prioritizes exact barcode scanning when adding a product to the caixa', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(calls.some((call) => call.action === 'cart.add')).toBe(false);
+    for (const key of 'Calça jeans') fireEvent.keyDown(document, { key });
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(await screen.findByText('Código não encontrado no estoque. Confira a leitura ou use a busca manual.')).toBeInTheDocument();
+    expect(calls.some((call) => call.action === 'cart.add')).toBe(false);
+    for (const key of 'SLB-000000000002') fireEvent.keyDown(document, { key });
+    fireEvent.keyDown(document, { key: 'Enter' });
+    await waitFor(() => expect(calls.some((call) => call.action === 'cart.add' && call.payload.barcode === 'SLB-000000000002')).toBe(true));
+  });
+
+  it('opens the stock search only as a manual fallback', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    for (const key of 'codigo-invalido') fireEvent.keyDown(document, { key });
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(await screen.findByText('Código não encontrado no estoque. Confira a leitura ou use a busca manual.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir estoque' }));
+    expect(screen.queryByText('Código não encontrado no estoque. Confira a leitura ou use a busca manual.')).not.toBeInTheDocument();
+    const search = await screen.findByRole('textbox', { name: 'Pesquisar produto no estoque' });
+    fireEvent.change(search, { target: { value: 'Calça' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Calça jeans ao caixa' }));
+    await waitFor(() => expect(calls.some((call) => call.action === 'cart.add' && call.payload.barcode === 'SLB-000000000002')).toBe(true));
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Pesquisar produto no estoque' })).not.toBeInTheDocument());
+    expect(screen.queryByText('Operação concluída.')).not.toBeInTheDocument();
+  });
+
+  it('queues a barcode read while another cart operation is busy', async () => {
+    delayNextCartAdd = true;
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    for (const key of 'SLB-000000000002') fireEvent.keyDown(document, { key });
+    fireEvent.keyDown(document, { key: 'Enter' });
+    await waitFor(() => expect(releaseCartAdd).toBeTypeOf('function'));
+    for (const key of 'SLB-000000000003') fireEvent.keyDown(document, { key });
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(await screen.findByText('Leitura recebida. A peça será adicionada assim que a operação atual terminar.')).toBeInTheDocument();
+    releaseCartAdd();
+    await waitFor(() => expect(calls.some((call) => call.action === 'cart.add' && call.payload.barcode === 'SLB-000000000003')).toBe(true));
   });
 
   it('keeps the product draft while navigating and calculates 3 variations / 4 pieces', async () => {
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     fireEvent.change(screen.getByRole('textbox', { name: /^Nome do produto/ }), { target: { value: 'Camiseta básica' } });
     fireEvent.change(screen.getByLabelText('Preço de custo'), { target: { value: '35,00' } });
@@ -65,7 +133,7 @@ describe('Lineboard frontend', () => {
     const summary = document.querySelector('.summary-card');
     expect(within(summary).getByText('3')).toBeInTheDocument();
     expect(within(summary).getByText('4')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Loja e estoque/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Estoque/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     expect(screen.getByRole('textbox', { name: /^Nome do produto/ })).toHaveValue('Camiseta básica');
     expect(document.querySelector('.product-layout')).toBeInTheDocument();
@@ -74,7 +142,7 @@ describe('Lineboard frontend', () => {
 
   it('validates the draft and sends fiscal decimal values as numbers on create', async () => {
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cadastrar produto' }));
     expect(await screen.findByText('Informe o nome do produto.')).toBeInTheDocument();
@@ -104,7 +172,7 @@ describe('Lineboard frontend', () => {
       return { data: {} };
     });
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     fireEvent.change(screen.getByRole('textbox', { name: /^Nome do produto/ }), { target: { value: 'Produto com fiscal' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Cor da variação 1' }), { target: { value: 'Preta' } });
@@ -124,7 +192,7 @@ describe('Lineboard frontend', () => {
 
   it('edits one unit from the drawer with explicit edit keys and fiscal round-trip', async () => {
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('row', { name: /Camiseta básica/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Editar peça' }));
     expect(await screen.findByRole('heading', { name: 'Editar peça' })).toBeInTheDocument();
@@ -153,10 +221,10 @@ describe('Lineboard frontend', () => {
       return { data: { items: [] } };
     });
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     fireEvent.change(screen.getByRole('textbox', { name: /^Nome do produto/ }), { target: { value: 'Rascunho preservado' } });
-    fireEvent.click(screen.getByRole('button', { name: /Loja e estoque/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Estoque/ }));
     fireEvent.click(screen.getByRole('row', { name: /Camiseta básica/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Editar peça' }));
     expect(await screen.findByRole('heading', { name: 'Editar peça' })).toBeInTheDocument();
@@ -167,14 +235,14 @@ describe('Lineboard frontend', () => {
     await waitFor(() => expect(calls.filter((call) => call.action === 'unit.edit')).toHaveLength(2));
     const edits = calls.filter((call) => call.action === 'unit.edit');
     expect(edits[0].payload.draft.request_id).toBe(edits[1].payload.draft.request_id);
-    fireEvent.click(screen.getByRole('button', { name: /Loja e estoque/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Estoque/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     expect(screen.getByRole('textbox', { name: /^Nome do produto/ })).toHaveValue('Rascunho preservado');
   });
 
   it('rejects a non numeric or out of range quantity before creating', async () => {
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     fireEvent.change(screen.getByRole('textbox', { name: /^Nome do produto/ }), { target: { value: 'Quantidade inválida' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Cor da variação 1' }), { target: { value: 'Preta' } });
@@ -187,11 +255,11 @@ describe('Lineboard frontend', () => {
 
   it('cancels a new product without sending a create request', async () => {
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     fireEvent.change(screen.getByRole('textbox', { name: /^Nome do produto/ }), { target: { value: 'Descartar este produto' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(await screen.findByRole('heading', { name: 'Loja e estoque' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Estoque' })).toBeInTheDocument();
     expect(calls.some((call) => call.action === 'product.create')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Novo produto' }));
     expect(screen.getByRole('textbox', { name: /^Nome do produto/ })).toHaveValue('');
@@ -210,7 +278,9 @@ describe('Lineboard frontend', () => {
       return { data: {} };
     });
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dinheiro' }));
     fireEvent.click(screen.getByRole('button', { name: 'Registrar venda e emitir nota' }));
     fireEvent.click(screen.getByRole('button', { name: 'Registrar e solicitar nota', exact: true }));
     expect(await screen.findByText('desktop sem resposta')).toBeInTheDocument();
@@ -219,7 +289,7 @@ describe('Lineboard frontend', () => {
     const requests = calls.filter((call) => call.action === 'cart.confirm');
     expect(requests[0].payload.request_id).toBe(requests[1].payload.request_id);
     expect(requests[0].payload.version).toBe(3);
-    expect(requests[0].payload.payment).toBe('pix');
+    expect(requests[0].payload.payment).toBe('cash');
     expect(requests[0].payload.fiscal_document).toBe('nfce');
   });
 
@@ -246,7 +316,7 @@ describe('Lineboard frontend', () => {
       return { data: {} };
     });
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
     expect(await screen.findByText('histórico indisponível')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
@@ -268,7 +338,7 @@ describe('Lineboard frontend', () => {
 
   it('uses internal navigation for history, labels, and settings', async () => {
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
     expect(await screen.findByRole('heading', { name: 'Histórico' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Etiquetas' }));
@@ -294,7 +364,7 @@ describe('Lineboard frontend', () => {
       return { data: {} };
     });
     renderApp();
-    await screen.findByRole('heading', { name: 'Loja e estoque' });
+    await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Vendas e saídas' }));
     expect(await screen.findByRole('heading', { name: 'Vendas e saídas' })).toBeInTheDocument();
     expect(screen.getByText('R$ 199,80')).toBeInTheDocument();

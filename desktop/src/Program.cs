@@ -10,7 +10,7 @@ namespace Lineboard {
   [STAThread] static int Main(string[] args){
    try{
      string workspace=Option(args,"--workspace",Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","..")));
-      string server=Option(args,"--server",ConfiguredServer());
+     string server=Option(args,"--server",ConfiguredServer());
      bool explicitDatabase=Array.IndexOf(args,"--database")>=0;
      string database=Option(args,"--database",explicitDatabase?"LINEBOARD_LAB":"SICNET");
     if(Array.IndexOf(args,"--probe")>=0){Emit(args,Json.Write(Probe(server)));return 0;}
@@ -52,7 +52,7 @@ namespace Lineboard {
   }
    static string ConfiguredServer(){
     var server=Environment.GetEnvironmentVariable("LINEBOARD_SIC_SERVER");
-    return String.IsNullOrWhiteSpace(server)?@"(localdb)\MSSQLLocalDB":server.Trim();
+    return String.IsNullOrWhiteSpace(server)?@".\SQLEXPRESS":server.Trim();
    }
    internal static bool HasWebUi(){return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui","index.html"));}
   static string Option(string[] args,string name,string fallback){int index=Array.IndexOf(args,name);if(index<0)return fallback;if(index+1==args.Length||args[index+1].StartsWith("--"))throw new DomainError("MISSING_ARGUMENT");return args[index+1];}

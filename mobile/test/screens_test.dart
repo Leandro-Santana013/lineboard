@@ -5,6 +5,40 @@ import 'package:lineboard_mobile/domain.dart';
 import 'package:lineboard_mobile/scan_label.dart';
 
 void main() {
+  test('scanner selects a valid Lineboard code after an invalid detection', () {
+    final result = selectBarcode([
+      null,
+      'another-code',
+      ' slb-000000000001 ',
+    ]);
+
+    expect(result.sawValue, isTrue);
+    expect(result.code, 'SLB-000000000001');
+  });
+
+  test('scanner reports a visible but unsupported code', () {
+    final result = selectBarcode(['7891234567890']);
+
+    expect(result.sawValue, isTrue);
+    expect(result.code, isNull);
+  });
+
+  test('scanner ignores captures without decoded values', () {
+    final result = selectBarcode([null, '', '   ']);
+
+    expect(result.sawValue, isFalse);
+    expect(result.code, isNull);
+  });
+
+  test('scanner deterministically selects the first valid code', () {
+    final result = selectBarcode([
+      'SLB-000000000002',
+      'SLB-000000000003',
+    ]);
+
+    expect(result.code, 'SLB-000000000002');
+  });
+
   testWidgets('missing configuration has an honest setup screen', (
     tester,
   ) async {

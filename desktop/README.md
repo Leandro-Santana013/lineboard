@@ -49,6 +49,10 @@ VPN ou várias interfaces, informe o endereço da rede Wi-Fi da loja explicitame
 O processo precisa de permissão para escutar nesse endereço pelo HTTP.sys.
 Nenhuma reserva de URL nem regra de firewall é alterada automaticamente.
 
+Por padrão, o aplicativo conecta à base `SICNET` na instância local
+`.\SQLEXPRESS` usando a conta Windows atual. Para outra instância, inicie o
+executável com `--server NOME_DO_SERVIDOR`; a conta precisa ter acesso à base.
+
 Para executar a versão já compilada nesta máquina, basta abrir o executável.
 Mantenha a pasta `ui`, as DLLs WebView2 e `schema.sql` junto dele; não copie apenas
 o arquivo `.exe`. As etapas npm acima são necessárias somente para recompilar.

@@ -12,6 +12,7 @@ import {
   Divider,
   Drawer,
   Group,
+  Modal,
   Paper,
   Progress,
   ScrollArea,
@@ -33,19 +34,23 @@ import {
   IconBarcode,
   IconBox,
   IconBuildingStore,
+  IconCash,
   IconChevronDown,
   IconChevronRight,
   IconCircleCheck,
   IconChartBar,
   IconCloudOff,
+  IconCreditCard,
   IconDeviceFloppy,
   IconFileExport,
   IconHistory,
   IconInfoCircle,
   IconMinus,
   IconPlus,
+  IconQrcode,
   IconReceipt,
   IconRefresh,
+  IconSearch,
   IconSettings,
   IconShoppingCart,
   IconTag,
@@ -161,7 +166,7 @@ function App() {
   const startProduct = () => { setProductMode('create'); setDraft((current) => current || emptyDraft()); setView('product'); setMessage(null); };
   const cancelProduct = () => { setView('inventory'); setDraft(emptyDraft()); setMessage(null); };
 
-  const run = async (key, action, payload, success) => {
+  const run = async (key, action, payload, success, { showSuccess = true } = {}) => {
     if (busy || activeMutations.current) return null;
     mutationEpoch.current += 1;
     activeMutations.current += 1;
@@ -169,7 +174,7 @@ function App() {
     try {
       const result = await callHost(action, payload);
       if (success) success(result);
-      setMessage({ type: 'success', text: 'Operação concluída.' });
+      if (showSuccess) setMessage({ type: 'success', text: 'Operação concluída.' });
       await refresh(true);
       return result;
     } catch (error) {
@@ -186,14 +191,14 @@ function App() {
     return operationIds.current.get(key);
   };
   const clearOperation = (key) => operationIds.current.delete(key);
-  const addCart = (unit) => { const key = `cart-add-${unit.barcode}`; return run(key, 'cart.add', { request_id: operationRequest(key), barcode: unit.barcode }, () => clearOperation(key)); };
-  const removeCart = (unit) => { const key = `cart-remove-${unit.barcode}`; return run(key, 'cart.remove', { request_id: operationRequest(key), barcode: unit.barcode }, () => clearOperation(key)); };
+  const addCart = (unit) => { const key = `cart-add-${unit.barcode}`; return run(key, 'cart.add', { request_id: operationRequest(key), barcode: unit.barcode }, () => clearOperation(key), { showSuccess: false }); };
+  const removeCart = (unit) => { const key = `cart-remove-${unit.barcode}`; return run(key, 'cart.remove', { request_id: operationRequest(key), barcode: unit.barcode }, () => clearOperation(key), { showSuccess: false }); };
   const confirmCart = (payment, fiscal_document, onSuccess) => {
     const key = `cart-confirm-${cart.version}-${payment}-${fiscal_document || 'none'}`;
     return run('cart-confirm', 'cart.confirm', { request_id: operationRequest(key), version: cart.version, payment, fiscal_document }, () => {
       clearOperation(key);
       if (onSuccess) onSuccess();
-    });
+    }, { showSuccess: false });
   };
 
   const openEdit = async (unit) => {
@@ -238,11 +243,12 @@ function App() {
 
   const content = view === 'product'
     ? <ProductPage draft={draft} setDraft={setDraft} onSave={saveProduct} onCancel={cancelProduct} busy={busy === 'product-save'} mode={productMode} environmentMode={environmentMode} />
-    : view === 'sales' ? <SalesDashboardPage />
-      : view === 'history' ? <HistoryPage />
-      : view === 'labels' ? <LabelsPage />
-        : view === 'settings' ? <SettingsPage />
-          : <InventoryPage catalog={catalog} cart={cart} selected={selected} setSelected={setSelected} addCart={addCart} removeCart={removeCart} confirmCart={confirmCart} busy={busy} onEdit={openEdit} onAdjust={openAdjust} onNew={startProduct} environmentMode={environmentMode} />;
+    : view === 'checkout' ? <CheckoutPage catalog={catalog} cart={cart} addCart={addCart} removeCart={removeCart} confirmCart={confirmCart} busy={busy} environmentMode={environmentMode} />
+      : view === 'sales' ? <SalesDashboardPage />
+        : view === 'history' ? <HistoryPage />
+          : view === 'labels' ? <LabelsPage />
+            : view === 'settings' ? <SettingsPage />
+              : <InventoryPage catalog={catalog} cart={cart} selected={selected} setSelected={setSelected} addCart={addCart} onEdit={openEdit} onAdjust={openAdjust} onNew={startProduct} environmentMode={environmentMode} />;
 
   return <AppShell
     padding={0}
@@ -251,10 +257,10 @@ function App() {
     styles={{ main: { background: '#f2f6fa', minHeight: '100vh' }, navbar: { background: '#132739', border: 0 } }}
   >
     <AppShell.Navbar p="md">
-      <Sidebar active={view} navigate={navigate} onNew={startProduct} environmentMode={environmentMode} />
+      <Sidebar active={view} navigate={navigate} cartCount={cart.items.length} environmentMode={environmentMode} />
     </AppShell.Navbar>
     <AppShell.Main>
-      <Box className={`app-content ${view === 'inventory' ? 'inventory-shell' : ''}`}>
+      <Box className={`app-content ${view === 'inventory' || view === 'checkout' ? 'operation-shell' : ''}`}>
         {!hasDesktopHost() && !hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md">Abra este conteúdo pelo executável desktop para acessar o SIC.</Alert> : null}
         {hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md" title="Desktop necessário">{hostError.message || 'Abra o Lineboard pelo aplicativo desktop para acessar o SIC.'}</Alert> : null}
         {message ? <Alert mb="md" color={message.type === 'error' ? 'red' : 'teal'} icon={message.type === 'error' ? <IconX size={18} /> : <IconCircleCheck size={18} />} withCloseButton onClose={() => setMessage(null)}>{message.text}</Alert> : null}
@@ -266,9 +272,10 @@ function App() {
   </AppShell>;
 }
 
-function Sidebar({ active, navigate, onNew, environmentMode }) {
+function Sidebar({ active, navigate, cartCount, environmentMode }) {
   const links = [
-    { key: 'inventory', label: 'Loja e estoque', icon: IconBuildingStore },
+    { key: 'inventory', label: 'Estoque', icon: IconBuildingStore },
+    { key: 'checkout', label: 'Caixa', icon: IconShoppingCart },
     { key: 'sales', label: 'Vendas e saídas', icon: IconChartBar },
     { key: 'history', label: 'Histórico', icon: IconHistory },
     { key: 'labels', label: 'Etiquetas', icon: IconTag },
@@ -280,7 +287,7 @@ function Sidebar({ active, navigate, onNew, environmentMode }) {
         <Box><Text fw={800} size="lg" c="white" lts=".04em">LINEBOARD</Text><Text size="xs" c="#9fbacc">Gestão da loja</Text></Box>
       </Group>
       <Text size="xs" c="#91acbf" fw={700} lts=".08em">OPERAÇÃO</Text>
-      <Stack gap={5}>{links.map(({ key, label, icon: Icon }) => <Button key={key} variant="subtle" justify="flex-start" leftSection={<Icon size={22} />} className={`nav-link ${active === key ? 'active' : ''}`} onClick={() => navigate(key)}>{label}</Button>)}</Stack>
+      <Stack gap={5}>{links.map(({ key, label, icon: Icon }) => <Button key={key} variant="subtle" justify="flex-start" leftSection={<Icon size={22} />} rightSection={key === 'checkout' && cartCount ? <Badge color="cyan" variant="filled" size="sm" circle>{cartCount}</Badge> : null} className={`nav-link ${active === key ? 'active' : ''}`} onClick={() => navigate(key)}>{label}</Button>)}</Stack>
     </Stack>
     <Stack gap="sm">
       <Button variant="subtle" justify="flex-start" leftSection={<IconSettings size={22} />} className={`nav-link ${active === 'settings' ? 'active' : ''}`} onClick={() => navigate('settings')}>Configurações</Button>
@@ -296,8 +303,8 @@ function PageHeading({ eyebrow, title, description, action, onBack }) {
   </Group>;
 }
 
-function InventoryPage({ catalog, cart, selected, setSelected, addCart, removeCart, confirmCart, busy, onEdit, onAdjust, onNew, environmentMode }) {
-  const [query, setQuery] = useState(''); const [filter, setFilter] = useState('all'); const [payment, setPayment] = useState('pix'); const [confirming, setConfirming] = useState(false);
+function InventoryPage({ catalog, cart, selected, setSelected, addCart, onEdit, onAdjust, onNew, environmentMode }) {
+  const [query, setQuery] = useState(''); const [filter, setFilter] = useState('all');
   const filtered = catalog.filter((unit) => {
     const haystack = [unit.name, unit.barcode, unit.brand, unit.category, unit.color, unit.size, unit.internal_code].join(' ').toLocaleLowerCase('pt-BR');
     const matches = haystack.normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(query.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
@@ -307,16 +314,13 @@ function InventoryPage({ catalog, cart, selected, setSelected, addCart, removeCa
   });
   const selectedUnit = selected ? catalog.find((unit) => unit.barcode === selected) : null;
   return <>
-    <PageHeading title="Loja e estoque" description="Suas peças e o caixa em um só lugar." action={<Button leftSection={<IconPlus size={18} />} color="teal" onClick={onNew}>Novo produto</Button>} />
-      <Alert color="yellow" icon={<IconInfoCircle size={18} />} mb="md">{environmentMode === 'production' ? 'SICNET · Emissão fiscal pendente de configuração' : 'Ambiente de teste · Emissão fiscal pendente de configuração'}</Alert>
-    <Box className="inventory-layout">
-      <Paper withBorder radius="md" p="lg" className="inventory-card">
-        <Group justify="space-between" mb="md"><Box><Title order={3}>Estoque</Title><Text size="sm" c="dimmed">{catalog.length} peças rastreadas individualmente</Text></Box><Group><TextInput placeholder="Buscar produto ou código" leftSection={<IconBarcode size={17} />} value={query} onChange={(event) => setQuery(event.currentTarget.value)} /><Select w={155} value={filter} onChange={(value) => setFilter(value || 'all')} data={[{ value: 'all', label: 'Todas as peças' }, { value: 'available', label: 'Disponíveis' }, { value: 'cart', label: 'No caixa' }, { value: 'empty', label: 'Sem saldo' }, { value: 'conflict', label: 'Em conflito' }]} /></Group></Group>
-        <ScrollArea type="auto" className="inventory-scroll"><Table highlightOnHover withColumnBorders={false} verticalSpacing="sm"><Table.Thead><Table.Tr><Table.Th>PRODUTO</Table.Th><Table.Th className="inventory-barcode-column">CÓDIGO</Table.Th><Table.Th>COR / TAM.</Table.Th><Table.Th ta="right">PREÇO</Table.Th><Table.Th>SITUAÇÃO</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{filtered.map((unit) => <InventoryRow key={unit.barcode} unit={unit} inCart={cart.items.some((item) => item.barcode === unit.barcode)} selected={selected === unit.barcode} onSelect={() => setSelected(unit.barcode)} />)}</Table.Tbody></Table>{filtered.length === 0 ? <EmptyState title={catalog.length ? 'Nenhum resultado' : 'Nenhuma peça cadastrada'} text={catalog.length ? 'Altere a busca ou o filtro para continuar.' : 'Cadastre o primeiro produto para começar.'} /> : null}</ScrollArea>
-        <Group justify="space-between" mt="md" className="inventory-actions"><Text size="sm" c="dimmed">{selectedUnit ? '1 peça selecionada' : 'Selecione uma peça no estoque'}</Text><Group gap="xs"><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onEdit(selectedUnit)}>Editar peça</Button><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onAdjust(selectedUnit)} leftSection={<IconAdjustments size={16} />}>Entrada / ajuste</Button><Button size="sm" color="teal" disabled={!selectedUnit || Boolean(selectedUnit.conflict) || Number(selectedUnit.quantity) !== 1 || cart.items.some((item) => item.barcode === selectedUnit.barcode)} onClick={() => addCart(selectedUnit)} leftSection={<IconShoppingCart size={16} />}>Adicionar ao caixa</Button></Group></Group>
-      </Paper>
-      <CheckoutPane cart={cart} payment={payment} setPayment={setPayment} confirming={confirming} setConfirming={setConfirming} removeCart={removeCart} confirmCart={confirmCart} busy={busy} />
-    </Box>
+    <PageHeading title="Estoque" description="Consulte, edite e ajuste as peças disponíveis na loja." action={<Button leftSection={<IconPlus size={18} />} color="teal" onClick={onNew}>Novo produto</Button>} />
+    <Alert color="yellow" icon={<IconInfoCircle size={18} />} mb="md">{environmentMode === 'production' ? 'SICNET · Emissão fiscal pendente de configuração' : 'Ambiente de teste · Emissão fiscal pendente de configuração'}</Alert>
+    <Paper withBorder radius="md" p="lg" className="inventory-card">
+      <Group justify="space-between" mb="md"><Box><Title order={3}>Peças em estoque</Title><Text size="sm" c="dimmed">{catalog.length} peças rastreadas individualmente</Text></Box><Group><TextInput aria-label="Buscar no estoque" placeholder="Buscar produto ou código" leftSection={<IconBarcode size={17} />} value={query} onChange={(event) => setQuery(event.currentTarget.value)} /><Select aria-label="Filtrar estoque" w={155} value={filter} onChange={(value) => setFilter(value || 'all')} data={[{ value: 'all', label: 'Todas as peças' }, { value: 'available', label: 'Disponíveis' }, { value: 'cart', label: 'No caixa' }, { value: 'empty', label: 'Sem saldo' }, { value: 'conflict', label: 'Em conflito' }]} /></Group></Group>
+      <ScrollArea type="auto" className="inventory-scroll"><Table highlightOnHover withColumnBorders={false} verticalSpacing="sm"><Table.Thead><Table.Tr><Table.Th>PRODUTO</Table.Th><Table.Th className="inventory-barcode-column">CÓDIGO</Table.Th><Table.Th>COR / TAM.</Table.Th><Table.Th ta="right">PREÇO</Table.Th><Table.Th>SITUAÇÃO</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{filtered.map((unit) => <InventoryRow key={unit.barcode} unit={unit} inCart={cart.items.some((item) => item.barcode === unit.barcode)} selected={selected === unit.barcode} onSelect={() => setSelected(unit.barcode)} />)}</Table.Tbody></Table>{filtered.length === 0 ? <EmptyState title={catalog.length ? 'Nenhum resultado' : 'Nenhuma peça cadastrada'} text={catalog.length ? 'Altere a busca ou o filtro para continuar.' : 'Cadastre o primeiro produto para começar.'} /> : null}</ScrollArea>
+      <Group justify="space-between" mt="md" className="inventory-actions"><Text size="sm" c="dimmed">{selectedUnit ? '1 peça selecionada' : 'Selecione uma peça no estoque'}</Text><Group gap="xs"><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onEdit(selectedUnit)}>Editar peça</Button><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onAdjust(selectedUnit)} leftSection={<IconAdjustments size={16} />}>Entrada / ajuste</Button><Button size="sm" color="teal" disabled={!selectedUnit || Boolean(selectedUnit.conflict) || Number(selectedUnit.quantity) !== 1 || cart.items.some((item) => item.barcode === selectedUnit.barcode)} onClick={() => addCart(selectedUnit)} leftSection={<IconShoppingCart size={16} />}>Adicionar ao caixa</Button></Group></Group>
+    </Paper>
   </>;
 }
 
@@ -325,26 +329,143 @@ function InventoryRow({ unit, inCart, selected, onSelect }) {
   return <Table.Tr className={selected ? 'selected-row' : ''} onClick={onSelect}><Table.Td className="inventory-product-cell"><Text fw={600} className="inventory-product-name">{unit.name}</Text><Text size="xs" ff="monospace" className="inventory-inline-barcode">{unit.barcode}</Text></Table.Td><Table.Td className="inventory-barcode-column"><Text size="xs" ff="monospace">{unit.barcode}</Text></Table.Td><Table.Td className="inventory-variant-cell">{[unit.color, unit.size].filter(Boolean).join(' · ') || '—'}</Table.Td><Table.Td ta="right" className="inventory-price-cell">{money(unit.price)}</Table.Td><Table.Td><Badge color={state[1]} variant="light" className="inventory-state-badge">{state[0]}</Badge></Table.Td></Table.Tr>;
 }
 
-function CheckoutPane({ cart, payment, setPayment, confirming, setConfirming, removeCart, confirmCart, busy }) {
+function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, environmentMode }) {
+  const scanBufferRef = useRef('');
+  const scanBufferTimerRef = useRef(null);
+  const pendingScanRef = useRef('');
+  const [scanError, setScanError] = useState('');
+  const [manualSearchOpen, setManualSearchOpen] = useState(false);
+  const [manualQuery, setManualQuery] = useState('');
+  const [payment, setPayment] = useState('pix');
+  const [confirming, setConfirming] = useState(false);
   const [fiscalDocument, setFiscalDocument] = useState('nfce');
-  return <Paper withBorder radius="md" p="lg" className="checkout-card">
-    <Group justify="space-between"><Title order={3}>Caixa</Title><Text size="sm" c="dimmed">{cart.items.length} {cart.items.length === 1 ? 'item' : 'itens'}</Text></Group>
-    <Text size="sm" c="dimmed" mt={5}>Confira os itens antes de concluir.</Text>
-    <ScrollArea className="cart-scroll" mt="md">
-      {cart.items.length ? <Stack gap={0}>{cart.items.map((item) => <Group key={item.barcode} justify="space-between" py="sm" className="cart-item">
-        <Box><Text fw={600} lineClamp={1}>{item.name}</Text><Text size="sm" c="dimmed">{[item.color, item.size].filter(Boolean).join(' · ')}</Text><Text size="xs" c="dimmed" ff="monospace">{item.barcode}</Text></Box>
-        <Group gap={5}><Text fw={700}>{money(item.price)}</Text><Tooltip label="Remover do caixa"><ActionIcon variant="subtle" color="red" aria-label={`Remover ${item.name}`} onClick={() => removeCart(item)}><IconX size={17} /></ActionIcon></Tooltip></Group>
-      </Group>)}</Stack> : <EmptyState title="Seu caixa está vazio" text="Selecione uma peça no estoque e adicione ao caixa." icon={<IconShoppingCart size={32} />} />}
-    </ScrollArea>
-    <Divider my="md" />
-    <Select label="Forma de pagamento" value={payment} onChange={(value) => setPayment(value || 'pix')} data={[{ value: 'pix', label: 'Pix' }, { value: 'cash', label: 'Dinheiro' }, { value: 'credit', label: 'Cartão de crédito' }, { value: 'debit', label: 'Cartão de débito' }]} disabled={!cart.items.length} />
-    <Select mt="sm" label="Documento fiscal" value={fiscalDocument} onChange={(value) => setFiscalDocument(value || 'nfce')} data={[{ value: 'nfce', label: 'NFC-e · modelo 65' }, { value: 'nfe', label: 'NF-e · modelo 55' }]} disabled={!cart.items.length} description="A solicitação será feita pela nova interface e ficará pendente até o emissor fiscal local estar configurado." />
-    <Group justify="space-between" mt="md"><Text c="dimmed">Total</Text><Text size="xl" fw={800}>{money(cart.total)}</Text></Group>
-    {confirming ? <Alert mt="md" color="yellow" title="Revisar venda e documento fiscal" icon={<IconReceipt size={18} />}>
-      <Text size="sm">O estoque será baixado uma vez. A solicitação de {fiscalDocument === 'nfe' ? 'NF-e (modelo 55)' : 'NFC-e (modelo 65)'} ficará registrada; a nota só será considerada autorizada após o retorno da SEFAZ.</Text>
-      <Group justify="flex-end" mt="sm"><Button variant="default" onClick={() => setConfirming(false)}>Voltar</Button><Button color="teal" loading={busy === 'cart-confirm'} onClick={() => confirmCart(payment, fiscalDocument, () => setConfirming(false))}>Registrar e solicitar nota</Button></Group>
-    </Alert> : <Button fullWidth mt="md" color="teal" disabled={!cart.items.length} onClick={() => setConfirming(true)}>Registrar venda e emitir nota</Button>}
-  </Paper>;
+  const available = catalog.filter((unit) => Number(unit.quantity) === 1 && !unit.conflict && !cart.items.some((item) => item.barcode === unit.barcode));
+  const normalizedManualQuery = manualQuery.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const manualMatches = available.filter((unit) => [unit.name, unit.barcode, unit.brand, unit.category, unit.color, unit.size, unit.internal_code].join(' ').toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(normalizedManualQuery));
+  const paymentOptions = [
+    { value: 'pix', label: 'Pix', icon: IconQrcode },
+    { value: 'cash', label: 'Dinheiro', icon: IconCash },
+    { value: 'credit', label: 'Crédito', icon: IconCreditCard },
+    { value: 'debit', label: 'Débito', icon: IconCreditCard },
+  ];
+  const scanProduct = async (rawCode) => {
+    const code = rawCode.trim();
+    if (!code || busy) return;
+    const unit = catalog.find((item) => item.barcode.toLocaleLowerCase('pt-BR') === code.toLocaleLowerCase('pt-BR'));
+    if (!unit) { setScanError('Código não encontrado no estoque. Confira a leitura ou use a busca manual.'); return; }
+    if (cart.items.some((item) => item.barcode === unit.barcode)) { setScanError('Esta peça já está na comanda.'); return; }
+    if (Number(unit.quantity) !== 1 || unit.conflict) { setScanError('Esta peça não está disponível para venda.'); return; }
+    setScanError('');
+    await addCart(unit);
+  };
+  useEffect(() => {
+    if (busy || !pendingScanRef.current) return;
+    const code = pendingScanRef.current;
+    pendingScanRef.current = '';
+    scanProduct(code);
+  }, [busy]);
+  useEffect(() => {
+    if (manualSearchOpen || confirming) return undefined;
+    const clearBuffer = () => {
+      scanBufferRef.current = '';
+      if (scanBufferTimerRef.current) window.clearTimeout(scanBufferTimerRef.current);
+      scanBufferTimerRef.current = null;
+    };
+    const captureScanner = (event) => {
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.key === 'Enter') {
+        const code = scanBufferRef.current.trim();
+        clearBuffer();
+        if (!code) return;
+        const exactMatch = catalog.some((item) => item.barcode.toLocaleLowerCase('pt-BR') === code.toLocaleLowerCase('pt-BR'));
+        if (!exactMatch && code.length < 6) return;
+        event.preventDefault();
+        if (busy) {
+          if (!pendingScanRef.current) {
+            pendingScanRef.current = code;
+            setScanError('Leitura recebida. A peça será adicionada assim que a operação atual terminar.');
+          }
+          return;
+        }
+        scanProduct(code);
+        return;
+      }
+      if (event.key.length !== 1) return;
+      scanBufferRef.current += event.key;
+      if (scanBufferTimerRef.current) window.clearTimeout(scanBufferTimerRef.current);
+      scanBufferTimerRef.current = window.setTimeout(clearBuffer, 300);
+    };
+    document.addEventListener('keydown', captureScanner, true);
+    return () => {
+      document.removeEventListener('keydown', captureScanner, true);
+      clearBuffer();
+    };
+  }, [busy, cart.items, catalog, confirming, manualSearchOpen]);
+  const addManualProduct = async (unit) => {
+    const result = await addCart(unit);
+    if (result === null) return;
+    setScanError('');
+    setManualSearchOpen(false);
+    setManualQuery('');
+  };
+  const openManualStock = () => {
+    setScanError('');
+    setManualSearchOpen(true);
+  };
+  return <>
+    <h1 className="visually-hidden">Caixa</h1>
+    <Box className="checkout-layout">
+      <Paper withBorder radius="md" p={0} className="pos-ticket">
+        <Box className="pos-ticket-head">
+          <Box className="pos-ticket-heading">
+            <Text className="pos-ticket-eyebrow"><span className="pos-status-dot" />COMANDA ATUAL</Text>
+            <Title order={2}>Venda em aberto</Title>
+            <Text className="pos-ticket-description">Revise os itens e escolha o pagamento para finalizar.</Text>
+          </Box>
+          <Group gap="sm" wrap="nowrap" className="pos-ticket-actions">
+            <Badge className="pos-item-count" radius="md">{cart.items.length} {cart.items.length === 1 ? 'item' : 'itens'}</Badge>
+            <Button variant="white" color="dark" className="pos-open-stock" leftSection={<IconSearch size={18} />} onClick={openManualStock}>Abrir estoque</Button>
+          </Group>
+        </Box>
+        {scanError ? <Alert color="red" m="md" mb={0} icon={<IconInfoCircle size={18} />}>{scanError}</Alert> : null}
+        <Box className="pos-ticket-body">
+          <ScrollArea className="pos-cart-scroll">
+            {cart.items.length ? <ul className="pos-cart-list">{cart.items.map((item) => <li key={item.barcode} className="pos-cart-item">
+              <Box className="pos-item-avatar" aria-hidden="true">{(item.name || 'Peça').trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toLocaleUpperCase('pt-BR')}</Box>
+              <Box className="pos-item-copy">
+                <Text className="pos-item-name">{item.name}</Text>
+                <Box className="pos-item-details"><Text component="span" className="pos-item-variant">{[item.color, item.size].filter(Boolean).join(' · ') || 'Peça individual'}</Text><Text component="span" className="pos-item-barcode">{item.barcode}</Text></Box>
+              </Box>
+              <Text className="pos-item-price">{money(item.price)}</Text>
+              <Tooltip label="Remover do caixa"><ActionIcon variant="subtle" color="red" className="pos-remove-item" aria-label={`Remover ${item.name}`} onClick={() => removeCart(item)}><IconX size={17} /></ActionIcon></Tooltip>
+            </li>)}</ul> : <EmptyState title="Comanda vazia" text="Escaneie a etiqueta da peça ou abra o estoque para localizar um produto." icon={<IconShoppingCart size={32} />} />}
+          </ScrollArea>
+          <Box component="section" aria-labelledby="pos-payment-heading" className="pos-ticket-footer">
+            <Title order={3} id="pos-payment-heading" className="pos-payment-heading">Pagamento</Title>
+            <Text className="pos-payment-description">Selecione como o cliente vai pagar</Text>
+            <SimpleGrid cols={2} spacing={8} className="payment-grid">{paymentOptions.map(({ value, label, icon: PaymentIcon }) => <Button key={value} variant="default" className={`pos-payment-option ${payment === value ? 'selected' : ''}`} leftSection={<PaymentIcon size={17} />} disabled={!cart.items.length} aria-pressed={payment === value} onClick={() => setPayment(value)}>{label}</Button>)}</SimpleGrid>
+            <Select className="pos-fiscal-select" label="Documento fiscal" value={fiscalDocument} onChange={(value) => setFiscalDocument(value || 'nfce')} data={[{ value: 'nfce', label: 'NFC-e · modelo 65' }, { value: 'nfe', label: 'NF-e · modelo 55' }]} disabled={!cart.items.length} />
+            <Box className="pos-sale-summary">
+              <dl className="pos-summary-lines"><div><dt>Subtotal</dt><dd>{money(cart.total)}</dd></div><div><dt>Descontos</dt><dd className="pos-discount">{money(0)}</dd></div></dl>
+              <Box className="pos-total"><Text className="pos-total-label">Total da venda</Text><Text className="pos-total-value">{money(cart.total)}</Text></Box>
+            </Box>
+            {confirming ? <Alert mt="sm" color="yellow" title="Revisar venda e documento fiscal" icon={<IconReceipt size={18} />}>
+              <Text size="sm">O estoque será baixado uma vez. A solicitação de {fiscalDocument === 'nfe' ? 'NF-e (modelo 55)' : 'NFC-e (modelo 65)'} ficará registrada; a nota só será considerada autorizada após o retorno da SEFAZ.</Text>
+              <Group justify="flex-end" mt="sm"><Button variant="default" onClick={() => setConfirming(false)}>Voltar</Button><Button color="teal" loading={busy === 'cart-confirm'} onClick={() => confirmCart(payment, fiscalDocument, () => setConfirming(false))}>Registrar e solicitar nota</Button></Group>
+            </Alert> : <Button fullWidth className="pos-confirm-sale" leftSection={<IconReceipt size={18} />} disabled={!cart.items.length} onClick={() => setConfirming(true)}>Registrar venda e emitir nota</Button>}
+            <Text className="pos-fiscal-notice">Confira os dados antes de concluir. A emissão fiscal está pendente de configuração{environmentMode === 'production' ? ' no SICNET' : ' no ambiente de teste'}.</Text>
+          </Box>
+        </Box>
+      </Paper>
+    </Box>
+    <Drawer opened={manualSearchOpen} onClose={() => { setManualSearchOpen(false); setManualQuery(''); }} position="right" size="xl" title={<Box><Text size="xs" fw={800} lts=".08em" c="teal">BUSCA MANUAL</Text><Title order={3}>Produtos disponíveis no estoque</Title></Box>} className="stock-search-drawer">
+      <TextInput aria-label="Pesquisar produto no estoque" size="md" placeholder="Busque por nome, código, marca, cor ou tamanho" leftSection={<IconSearch size={19} />} value={manualQuery} onChange={(event) => setManualQuery(event.currentTarget.value)} autoFocus />
+      <Group justify="space-between" mt="sm" mb="md"><Text size="sm" c="dimmed">Selecione uma peça para adicionar à comanda.</Text><Badge color="teal" variant="light">{manualMatches.length} resultados</Badge></Group>
+      <ScrollArea className="manual-stock-results">
+        {manualMatches.length ? <Stack gap="sm">{manualMatches.map((unit) => <Paper key={unit.barcode} withBorder radius="md" p="md" className="pos-product-row"><Group justify="space-between" wrap="nowrap"><Box className="pos-product-copy"><Text fw={700} lineClamp={1}>{unit.name}</Text><Text size="sm" c="dimmed">{[unit.brand, unit.category, unit.color, unit.size].filter(Boolean).join(' · ') || 'Sem variação informada'}</Text><Text size="xs" ff="monospace" c="dimmed">{unit.barcode}</Text></Box><Group gap="md" wrap="nowrap"><Text fw={800} className="pos-product-price">{money(unit.price)}</Text><Button variant="light" color="teal" leftSection={<IconPlus size={16} />} loading={busy === `cart-add-${unit.barcode}`} onClick={() => addManualProduct(unit)} aria-label={`Adicionar ${unit.name} ao caixa`}>Adicionar</Button></Group></Group></Paper>)}</Stack> : <EmptyState title={available.length ? 'Nenhum produto encontrado' : 'Nenhuma peça disponível'} text={available.length ? 'Tente buscar por outro nome ou código.' : 'As peças disponíveis aparecerão aqui para venda.'} icon={<IconSearch size={32} />} />}
+      </ScrollArea>
+    </Drawer>
+  </>;
 }
 
 function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmentMode }) {
@@ -358,7 +479,7 @@ function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmen
   const pieces = validVariants.reduce((sum, variant) => sum + Number(variant.quantity), 0);
   const title = mode === 'edit' ? 'Editar peça' : 'Novo produto';
   return <Box className="product-page">
-    <PageHeading eyebrow="Loja e estoque  /  Cadastro" title={title} description={mode === 'edit' ? 'Altere os dados da peça selecionada.' : 'Cadastre o produto e informe as peças disponíveis.'} onBack={onCancel} />
+    <PageHeading eyebrow="Estoque  /  Cadastro" title={title} description={mode === 'edit' ? 'Altere os dados da peça selecionada.' : 'Cadastre o produto e informe as peças disponíveis.'} onBack={onCancel} />
     <Alert color="yellow" icon={<IconInfoCircle size={18} />} mb="md">{environmentMode === 'production' ? 'SICNET · Emissão fiscal pendente de configuração' : 'Ambiente de teste · Emissão fiscal pendente de configuração'}</Alert>
     <Box className="product-layout">
       <Stack gap="md" className="product-main">
@@ -536,7 +657,7 @@ function EditDrawer({ unit, onClose, onSave, busy }) {
     setDraft(nextDraft);
     onSave(nextDraft);
   };
-  return <Drawer opened={Boolean(unit)} onClose={onClose} title="Editar peça" position="right" size="md">
+  return <Modal opened={Boolean(unit)} onClose={onClose} title="Editar peça" centered size={960} radius="md" padding="lg" classNames={{ content: 'stock-modal stock-edit-modal', header: 'stock-modal-header', body: 'stock-modal-body' }}>
     <Stack>
       <TextInput label="Nome do produto" required value={draft.name} onChange={(event) => update('name', event.currentTarget.value)} />
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
@@ -559,10 +680,10 @@ function EditDrawer({ unit, onClose, onSave, busy }) {
       <SimpleGrid cols={2}>{[...fiscalTextKeys, ...fiscalNumberKeys].map((key) => <TextInput key={key} label={fiscalLabels[key]} value={valueText(draft.fiscal[key])} onChange={(event) => updateFiscal(key, event.currentTarget.value)} />)}</SimpleGrid>
       <Button color="teal" loading={busy} onClick={submit}>Salvar alterações</Button>
     </Stack>
-  </Drawer>;
+  </Modal>;
 }
 
-function AdjustDrawer({ unit, onClose, onSave, busy }) { const [quantity, setQuantity] = useState(1); const [reason, setReason] = useState(''); useEffect(() => { setQuantity(1); setReason(''); }, [unit]); return <Drawer opened={Boolean(unit)} onClose={onClose} title="Entrada / ajuste" position="right" size="sm"><Stack><Text c="dimmed">Atualize a disponibilidade de <strong>{unit && unit.name}</strong>.</Text><Select label="Novo saldo" value={String(quantity)} onChange={(value) => setQuantity(Number(value))} data={[{ value: '0', label: 'Indisponível (saldo 0)' }, { value: '1', label: 'Disponível (saldo 1)' }]} /><Textarea label="Motivo do ajuste (obrigatório)" required value={reason} onChange={(event) => setReason(event.currentTarget.value)} /><Button color="teal" loading={busy} disabled={!reason.trim()} onClick={() => onSave(quantity, reason)}>Registrar ajuste</Button></Stack></Drawer>; }
+function AdjustDrawer({ unit, onClose, onSave, busy }) { const [quantity, setQuantity] = useState(1); const [reason, setReason] = useState(''); useEffect(() => { setQuantity(1); setReason(''); }, [unit]); return <Modal opened={Boolean(unit)} onClose={onClose} title="Entrada / ajuste" centered size={480} radius="md" padding="lg" classNames={{ content: 'stock-modal stock-adjust-modal', header: 'stock-modal-header', body: 'stock-modal-body' }}><Stack><Text c="dimmed">Atualize a disponibilidade de <strong>{unit && unit.name}</strong>.</Text><Select label="Novo saldo" value={String(quantity)} onChange={(value) => setQuantity(Number(value))} data={[{ value: '0', label: 'Indisponível (saldo 0)' }, { value: '1', label: 'Disponível (saldo 1)' }]} /><Textarea label="Motivo do ajuste (obrigatório)" required value={reason} onChange={(event) => setReason(event.currentTarget.value)} /><Button color="teal" loading={busy} disabled={!reason.trim()} onClick={() => onSave(quantity, reason)}>Registrar ajuste</Button></Stack></Modal>; }
 
 function EmptyState({ title, text, icon }) { return <Stack align="center" justify="center" gap="xs" py="xl" c="dimmed">{icon || <IconArchive size={32} />}<Text fw={700}>{title}</Text><Text size="sm" ta="center">{text}</Text></Stack>; }
 
