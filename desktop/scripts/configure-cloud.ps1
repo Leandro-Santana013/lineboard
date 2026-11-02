@@ -14,26 +14,38 @@ if (-not [Uri]::TryCreate($SyncUrl, [UriKind]::Absolute, [ref]$uri) -or
     throw 'SyncUrl deve ser uma URL HTTPS /functions/v1/sic-sync de um projeto Supabase.'
 }
 
-$secureToken = Read-Host 'Cole o token privado slb_live_... (nao sera exibido)' -AsSecureString
-$token = $null
-$pointer = [IntPtr]::Zero
-try {
-    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
-    $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
-}
-finally {
-    if ($pointer -ne [IntPtr]::Zero) {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+$token = [Environment]::GetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', [EnvironmentVariableTarget]::User)
+$token = if ($token) { $token.Trim() } else { $null }
+if ($token) {
+    if (($token.StartsWith("'") -and $token.EndsWith("'")) -or
+        ($token.StartsWith('"') -and $token.EndsWith('"'))) {
+        $token = $token.Substring(1, $token.Length - 2).Trim()
     }
 }
 
-$token = $token.Trim()
-if (($token.StartsWith("'") -and $token.EndsWith("'")) -or
-    ($token.StartsWith('"') -and $token.EndsWith('"'))) {
-    $token = $token.Substring(1, $token.Length - 2).Trim()
+if (-not $token -or $token -cnotmatch '^slb_live_[a-f0-9]{64}$') {
+    $secureToken = Read-Host 'Cole o token privado slb_live_... (nao sera exibido)' -AsSecureString
+    $token = $null
+    $pointer = [IntPtr]::Zero
+    try {
+        $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+        $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+    }
+    finally {
+        if ($pointer -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+        }
+    }
+    $token = $token.Trim()
+    if (($token.StartsWith("'") -and $token.EndsWith("'")) -or
+        ($token.StartsWith('"') -and $token.EndsWith('"'))) {
+        $token = $token.Substring(1, $token.Length - 2).Trim()
+    }
+} else {
+    Write-Host 'Usando o token cloud ja salvo no usuario atual do Windows.'
 }
 
-if ($token -notmatch '^slb_live_[a-f0-9]{64}$') {
+if ($token -cnotmatch '^slb_live_[a-f0-9]{64}$') {
     throw 'Token invalido. Ele deve seguir o formato slb_live_ mais 64 caracteres hexadecimais.'
 }
 
@@ -57,8 +69,9 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $executable)) {
 
 $resultPath = Join-Path ([IO.Path]::GetTempPath()) ('lineboard-bootstrap-' + [Guid]::NewGuid().ToString('N') + '.json')
 try {
-    & $executable '--sync-now' '--result-file' $resultPath
-    $exitCode = $LASTEXITCODE
+    $arguments = @('--sync-now', '--result-file', ('"' + $resultPath + '"'))
+    $process = Start-Process -FilePath $executable -ArgumentList $arguments -WorkingDirectory $desktopRoot -WindowStyle Hidden -Wait -PassThru
+    $exitCode = $process.ExitCode
     if (-not (Test-Path -LiteralPath $resultPath)) {
         throw 'O executavel nao produziu o resultado do bootstrap.'
     }
