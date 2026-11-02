@@ -6,21 +6,42 @@ using System.Text;
 
 namespace Lineboard {
  public sealed class CloudSync {
-  readonly SicStore store;readonly Func<Dictionary<string,object>,Dictionary<string,object>> send;readonly object gate=new object();
+  readonly SicStore store;readonly Func<Dictionary<string,object>,Dictionary<string,object>> send;readonly Func<Dictionary<string,object>> pull;readonly object gate=new object();
   public readonly bool Configured;
-  public CloudSync(SicStore store):this(store,CreateSender()){}
-  internal CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender){this.store=store;send=sender;Configured=sender!=null;}
+  public CloudSync(SicStore store):this(store,CreateSender(),CreatePuller(store)){}
+  internal CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender){this.store=store;send=sender;pull=null;Configured=sender!=null;}
+  CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender,Func<Dictionary<string,object>> receiver){this.store=store;send=sender;pull=receiver;Configured=sender!=null;}
+  static string Env(string name){var value=Environment.GetEnvironmentVariable(name);if(!String.IsNullOrEmpty(value))return value;value=Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.User);if(!String.IsNullOrEmpty(value))return value;return Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.Machine);}
   static Func<Dictionary<string,object>,Dictionary<string,object>> CreateSender(){
-   var address=Environment.GetEnvironmentVariable("LINEBOARD_SYNC_URL");var token=Environment.GetEnvironmentVariable("LINEBOARD_SYNC_TOKEN");
+   var address=Env("LINEBOARD_SYNC_URL");var token=Env("LINEBOARD_SYNC_TOKEN");
    if(String.IsNullOrEmpty(address)||String.IsNullOrEmpty(token))return null;
    Uri uri;if(!Uri.TryCreate(address,UriKind.Absolute,out uri)||uri.Scheme!="https"||!uri.Host.EndsWith(".supabase.co",StringComparison.OrdinalIgnoreCase)||uri.AbsolutePath!="/functions/v1/sic-sync"||uri.UserInfo!=""||uri.Query!=""||uri.Fragment!="")throw new DomainError("INVALID_CLOUD_ADDRESS");
    if(!System.Text.RegularExpressions.Regex.IsMatch(token,@"^slb_live_[a-f0-9]{64}$"))throw new DomainError("INVALID_CLOUD_CREDENTIAL");
    return payload=>{
+    ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
     var request=(HttpWebRequest)WebRequest.Create(uri);request.Method="POST";request.AllowAutoRedirect=false;request.Timeout=15000;request.ContentType="application/json";request.Headers["Authorization"]="Bearer "+token;
     var bytes=Encoding.UTF8.GetBytes(Json.Write(payload));request.ContentLength=bytes.Length;using(var stream=request.GetRequestStream())stream.Write(bytes,0,bytes.Length);
     try{using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream()))return Json.Read<Dictionary<string,object>>(reader.ReadToEnd());}
     catch(WebException error){if(error.Response!=null)error.Response.Dispose();throw new DomainError("CLOUD_NOT_ACKNOWLEDGED");}
    };
+  }
+  static Func<Dictionary<string,object>> CreatePuller(SicStore store){
+   var address=Env("LINEBOARD_SYNC_URL");var token=Env("LINEBOARD_SYNC_TOKEN");
+   if(String.IsNullOrEmpty(address)||String.IsNullOrEmpty(token))return null;
+   Uri uri;if(!Uri.TryCreate(address,UriKind.Absolute,out uri)||uri.Scheme!="https"||!uri.Host.EndsWith(".supabase.co",StringComparison.OrdinalIgnoreCase)||uri.AbsolutePath!="/functions/v1/sic-sync"||uri.UserInfo!=""||uri.Query!=""||uri.Fragment!="")throw new DomainError("INVALID_CLOUD_ADDRESS");
+   if(!System.Text.RegularExpressions.Regex.IsMatch(token,@"^slb_live_[a-f0-9]{64}$"))throw new DomainError("INVALID_CLOUD_CREDENTIAL");
+   return ()=>{
+    ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
+    var target=new Uri(uri.AbsoluteUri+"?instance_id="+Uri.EscapeDataString(store.InstanceId));
+    var request=(HttpWebRequest)WebRequest.Create(target);request.Method="GET";request.AllowAutoRedirect=false;request.Timeout=15000;request.Headers["Authorization"]="Bearer "+token;
+    try{using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream()))return Json.Read<Dictionary<string,object>>(reader.ReadToEnd());}
+    catch(WebException error){if(error.Response!=null)error.Response.Dispose();throw new DomainError("CLOUD_NOT_ACKNOWLEDGED");}
+   };
+  }
+  public Dictionary<string,object> Reconcile(){
+   if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int imported=0;
+   if(pull!=null){var snapshot=pull();if(!snapshot.ContainsKey("state")||Convert.ToString(snapshot["state"])!="snapshot")throw new DomainError("INVALID_CLOUD_SNAPSHOT");if(!String.Equals(Convert.ToString(snapshot["instance_id"]),store.InstanceId,StringComparison.OrdinalIgnoreCase))throw new DomainError("INVALID_CLOUD_SNAPSHOT");var result=store.ImportCloudSnapshot(snapshot);imported=Convert.ToInt32(result["imported"]);object raw;var cloudUnits=snapshot.TryGetValue("units",out raw)?Json.Read<List<Dictionary<string,object>>>(Json.Write(raw)):new List<Dictionary<string,object>>();store.QueueCatalogMissing(cloudUnits);}
+   var pushed=Push();pushed["imported"]=imported;return pushed;
   }
   public Dictionary<string,object> Push(){lock(gate){
    if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int sent=0;

@@ -49,6 +49,12 @@ function Send-Event([object]$Event, [string]$Credential = $token, [int]$Expected
     }
     return $text | ConvertFrom-Json
 }
+function Pull-Snapshot([string]$Credential = $token) {
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Method Get -Uri ($base + '/functions/v1/sic-sync?instance_id=' + [Uri]::EscapeDataString($instance)) -Headers @{ apikey = $settings.SUPABASE_PUBLISHABLE_KEY; Authorization = 'Bearer ' + $Credential } -TimeoutSec 30
+        return $response.Content | ConvertFrom-Json
+    } catch { throw 'Cloud snapshot endpoint unreachable.' }
+}
 
 $cleanup = @"
 begin;
@@ -88,6 +94,8 @@ select exists(select 1 from public.memberships where organization_id='$org') as 
     $event = @{ event_id=[Guid]::NewGuid().ToString(); instance_id=$instance; mode='sandbox'; kind='unit.upsert'; payload=$item }
     $result = Send-Event $event
     Check ($result.state -eq 'applied' -and $result.event_id -eq $event.event_id) 'Authenticated SIC event reaches deployed function and database'
+    $snapshot = Pull-Snapshot
+    Check ($snapshot.state -eq 'snapshot' -and $snapshot.instance_id -eq $instance -and @($snapshot.units).Count -eq 1) 'Authenticated desktop bootstrap pulls the cloud catalog'
     $replay = Send-Event $event
     Check ($replay.replayed -eq $true) 'Repeated event returns the previous result'
     $changed = $event.Clone(); $changed.payload = $item.Clone(); $changed.payload.price = 30

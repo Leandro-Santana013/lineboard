@@ -21,7 +21,7 @@ namespace Lineboard {
   readonly System.Windows.Forms.Timer refreshTimer=new System.Windows.Forms.Timer {Interval=1800};
   long cartVersion=-1; string pendingConfirmation; ConfirmDraft pendingDraft; string inventorySignature="";bool renderingPreview;
   public DesktopForm(SicStore store,LocalApi api){
-   this.store=store;this.api=api;sync=new CloudSync(store);backgroundSync=new BackgroundSync(sync);DesktopTheme.Form(this);Text="Lineboard • Loja e estoque • Laboratório";
+   this.store=store;this.api=api;sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);DesktopTheme.Form(this);Text="Lineboard • Loja e estoque • Laboratório";
    Size=new Size(1360,880);MinimumSize=new Size(1180,740);StartPosition=FormStartPosition.CenterScreen;KeyPreview=true;DoubleBuffered=true;
    var area=Screen.FromControl(this).WorkingArea;Size=new Size(Math.Min(Width,area.Width),Math.Min(Height,area.Height));
    var shell=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,Margin=Padding.Empty};shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,204));shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));shell.RowStyles.Add(new RowStyle(SizeType.Percent,100));Controls.Add(shell);

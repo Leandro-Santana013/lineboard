@@ -58,7 +58,7 @@ remota e emissão fiscal continuam pendentes; não alegar que estão publicadas.
 4. Renderizar e inspecionar a tela preenchida e vazia, em tamanho normal e reduzido.
    Usar o próprio WinForms/DrawToBitmap; o helper de controle interativo do Windows
    está indisponível (`native pipe is unavailable`). Não alegar teste manual.
-5. Compilar CLI e GUI com `desktop/scripts/build.ps1 -Console` e `build.ps1`.
+5. Compilar somente `desktop/bin/Lineboard.exe` com `desktop/scripts/build.ps1`.
    O executável entregue é `desktop/bin/Lineboard.exe`. Não comitar/publicar por
    conta própria; este diretório atualmente nem tem metadados Git.
 6. Atualizar `docs/implementation-status.md` e documentação do fluxo se necessário.

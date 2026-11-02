@@ -40,7 +40,7 @@ namespace Lineboard {
    this.store=store;this.api=api;this.realtime=realtime;this.workspace=Path.GetFullPath(workspace);this.preview=preview;this.previewPath=previewPath;this.webSelfTest=webSelfTest;this.webCapture=webCapture;this.largeCapture=largeCapture;
    uiRoot=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui");
    if(!Directory.Exists(uiRoot)||!File.Exists(Path.Combine(uiRoot,"index.html")))throw new DomainError("UI_ASSETS_MISSING");
-   sync=new CloudSync(store);backgroundSync=new BackgroundSync(sync);
+   sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);
    Text="Lineboard • Loja e estoque • Laboratório";StartPosition=FormStartPosition.CenterScreen;ClientSize=new Size(1224,794);MinimumSize=new Size(1180,740);if(largeCapture)ClientSize=new Size(1400,960);
    if(preview){ShowInTaskbar=false;WindowState=FormWindowState.Normal;}
    Controls.Add(webView);

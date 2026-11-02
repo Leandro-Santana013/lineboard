@@ -99,6 +99,24 @@
   registro da instância precisam ser executados antes de ativar a ponte em uma
   loja. O mobile deve ser compilado com `LINEBOARD_MODE=cloud` para usar essa fila.
 
+## Sincronização automática e bootstrap cloud — 02/11/2026
+
+- Aplicadas remotamente as migrations `202611020001_cloud_bootstrap.sql` e
+  `202611020002_rotate_sic_instance.sql`; `sic-sync` foi republicada.
+- A carga inicial desta instalação enviou os itens locais ao Supabase. A consulta
+  remota posterior retornou 66 `stock_items`, 66 `sic_unit_links`, 2 produtos,
+  12 variantes e uma conexão SIC ativa.
+- `Lineboard.exe` agora executa pull do snapshot, importação local idempotente e
+  envio imediato depois de cada transação confirmada; o ciclo automático a cada
+  30 segundos permanece como reconciliação e retry. A opção `--sync-now`
+  executa o mesmo ciclo sem abrir a interface.
+- Uma base local vazia foi usada como segunda instalação: o bootstrap importou
+  66 unidades e terminou com `state=up_to_date`. O vínculo da máquina principal
+  foi restaurado depois do teste.
+- A garantia entre SQL Server local e PostgreSQL remoto é transação local com
+  outbox durável, aplicação cloud transacional e eventos idempotentes; não existe
+  uma transação física única entre os dois servidores.
+
 ## Importação controlada para SICNET — 31/10/2026
 
 - O catálogo da cópia `LINEBOARD_LAB` foi conferido e importado para `SICNET`:
@@ -144,7 +162,8 @@
   Não havia aparelho conectado ao ADB; instalação e pareamento físicos pendentes.
 - Executável Windows compilado com 110.080 bytes. SHA-256:
   `f97c6c9e315c788a951e22406f627b691557f635aa2399644b1f9ae0bbe6a7be`.
-  Os comandos de diagnóstico usam `desktop/bin/Lineboard.Cli.exe`, separado da GUI.
+  Os comandos de diagnóstico usam o mesmo `desktop/bin/Lineboard.exe` da GUI;
+  não há executáveis separados de teste ou produção.
 - Prévia da interface gerada pelo próprio renderizador WinForms e inspecionada.
   Isso não substitui teste interativo no Windows nem conferência da venda no SIC.
 - A automação da janela nativa SIC falhou com `failed to write kernel assets`;

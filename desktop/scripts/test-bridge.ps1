@@ -4,7 +4,7 @@ $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $desktopRoot = Join-Path $workspace 'desktop'
 $database = 'LINEBOARD_LAB_BRIDGE' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-$output = Join-Path $workspace '.local\bridge-verification'
+$output = Join-Path ([IO.Path]::GetTempPath()) ('lineboard-bridge-verification-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $output -Force
 $packageRoot = & (Join-Path $PSScriptRoot 'ensure-webview2.ps1') | Select-Object -Last 1
 $coreAssembly = Join-Path $packageRoot 'lib\net462\Microsoft.Web.WebView2.Core.dll'
@@ -15,6 +15,13 @@ $testExecutable = Join-Path $output 'Lineboard.BridgeTests.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Bridge test compilation failed.' }
 Copy-Item -LiteralPath (Join-Path $desktopRoot 'schema.sql') -Destination (Join-Path $output 'schema.sql') -Force
 & (Join-Path $PSScriptRoot 'New-SicSandbox.ps1') -Server $Server -Database $database -Empty
-& $testExecutable $workspace $database
-if ($LASTEXITCODE -ne 0) { throw 'Desktop bridge tests failed.' }
-# Keep the dedicated sandbox and output as evidence. This script never drops a database.
+$exitCode = 0
+try {
+    & $testExecutable $workspace $database
+    $exitCode = $LASTEXITCODE
+} finally {
+    Remove-Item -LiteralPath $output -Recurse -Force -ErrorAction SilentlyContinue
+}
+if ($exitCode -ne 0) { throw 'Desktop bridge tests failed.' }
+# Keep the dedicated sandbox as evidence. The temporary test executable is not
+# left in the workspace and never competes with desktop/bin/Lineboard.exe.

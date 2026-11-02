@@ -6,11 +6,12 @@ Cada peça física possui um código interno Code 128 exclusivo. O celular envia
 leituras ao carrinho; a confirmação e a baixa acontecem no desktop.
 
 **Estado em 31/10/2026:** desktop React/Mantine integrado ao conector SIC em
-laboratório. Uma importação controlada levou os 57 produtos e seus recebimentos
+um único executável, `desktop/bin/Lineboard.exe`. Ele abre o `SICNET` local por
+padrão; `desktop/scripts/start.ps1 -Lab` usa o mesmo executável com
+`LINEBOARD_LAB`. Uma importação controlada levou os 57 produtos e seus recebimentos
 da cópia `LINEBOARD_LAB` para a base demonstrativa `SICNET`, com backup COPY_ONLY
-antes da gravação. A interface continua em laboratório por padrão; o modo de
-produção exige `--production --confirm-production`. A ponte Supabase e o
-acionamento fiscal continuam dependentes de ativação e homologação próprias.
+antes da gravação. A ponte Supabase foi ativada para esta instalação; o
+acionamento fiscal continua dependente de homologação própria.
 
 Instruções completas e limites em [desktop/README.md](desktop/README.md).
 
@@ -19,7 +20,7 @@ Instruções completas e limites em [desktop/README.md](desktop/README.md).
 .\desktop\scripts\build.ps1
 .\desktop\scripts\start.ps1
 
-# O modo padrao agora e producao; para laboratorio use -Lab.
+# O modo padrao usa o SICNET; para laboratorio use -Lab.
 
 # Nova cópia isolada e testes SQL Server reais:
 .\desktop\scripts\test.ps1

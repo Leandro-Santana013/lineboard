@@ -13,14 +13,15 @@ namespace Lineboard {
      string server=Option(args,"--server",@"(localdb)\MSSQLLocalDB");
      bool explicitDatabase=Array.IndexOf(args,"--database")>=0;
      string database=Option(args,"--database",explicitDatabase?"LINEBOARD_LAB":"SICNET");
-    if(Array.IndexOf(args,"--probe")>=0){Console.WriteLine(Json.Write(Probe(server)));return 0;}
+    if(Array.IndexOf(args,"--probe")>=0){Emit(args,Json.Write(Probe(server)));return 0;}
     var explicitProduction=Array.IndexOf(args,"--production")>=0;
     var production=explicitProduction||!explicitDatabase;
     if(explicitProduction&&Array.IndexOf(args,"--confirm-production")<0)throw new DomainError("PRODUCTION_CONFIRM_REQUIRED");
     var store=new SicStore(server,database,workspace,production);
-    if(Array.IndexOf(args,"--self-test")>=0){Console.WriteLine(Json.Write(SelfTests.Run(store,server,workspace)));return 0;}
-    if(Array.IndexOf(args,"--health")>=0){Console.WriteLine(Json.Write(store.Health()));return 0;}
-    if(Array.IndexOf(args,"--export-outbox")>=0){Console.WriteLine(Json.Write(store.Outbox()));return 0;}
+    if(Array.IndexOf(args,"--sync-now")>=0){try{var sync=new CloudSync(store);Emit(args,Json.Write(sync.Reconcile()));return 0;}catch(Exception error){ErrorFile(args,error.Message);throw;}}
+    if(Array.IndexOf(args,"--self-test")>=0){Emit(args,Json.Write(SelfTests.Run(store,server,workspace)));return 0;}
+    if(Array.IndexOf(args,"--health")>=0){Emit(args,Json.Write(store.Health()));return 0;}
+    if(Array.IndexOf(args,"--export-outbox")>=0){Emit(args,Json.Write(store.Outbox()));return 0;}
     if(Array.IndexOf(args,"--render-legacy-preview")>=0){Application.EnableVisualStyles();using(var previewApi=new LocalApi(store,"localhost",47831))using(var preview=new DesktopForm(store,previewApi)){preview.RenderPreview(Option(args,"--output",Path.Combine(workspace,".local","desktop-preview.png")));}return 0;}
     var legacyUi=Array.IndexOf(args,"--legacy-ui")>=0;
     var webSelfTest=Array.IndexOf(args,"--web-self-test")>=0;
@@ -38,10 +39,10 @@ namespace Lineboard {
      Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
      var outputName=webCaptureLarge?"desktop-web-capture-large.png":(webSelfTest?"desktop-web-self-test.png":(webCapture?"desktop-web-capture.png":"desktop-web-preview.png"));
      var preview=new WebDesktopForm(store,api,workspace,webPreview,Option(args,"--output",Path.Combine(workspace,".local",outputName)),webSelfTest,webCapture,webCaptureLarge,realtime);
-     using(preview){Application.Run(preview);if(webSelfTest||webCapture)Console.WriteLine(preview.SelfTestResult??Json.Write(new{ok=false,error=preview.PreviewError??"WEBVIEW_CAPTURE_FAILED"}));return (webSelfTest||webCapture)?(preview.SelfTestSucceeded?0:1):(preview.PreviewSucceeded?0:1);}
+    using(preview){Application.Run(preview);if(webSelfTest||webCapture)Emit(args,preview.SelfTestResult??Json.Write(new{ok=false,error=preview.PreviewError??"WEBVIEW_CAPTURE_FAILED"}));return (webSelfTest||webCapture)?(preview.SelfTestSucceeded?0:1):(preview.PreviewSucceeded?0:1);}
     }
     api.Start();
-    if(serve){Console.WriteLine(Json.Write(new{address=api.Address,mode=production?"production":"sandbox",database}));new ManualResetEvent(false).WaitOne();return 0;}
+    if(serve){Emit(args,Json.Write(new{address=api.Address,mode=production?"production":"sandbox",database}));new ManualResetEvent(false).WaitOne();return 0;}
     Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
     if(legacyUi){using(var form=new DesktopForm(store,api)){Application.Run(form);}}
     else {using(var form=new WebDesktopForm(store,api,workspace,false,null,false,false,false,realtime)){Application.Run(form);}}
@@ -51,6 +52,8 @@ namespace Lineboard {
   }
   internal static bool HasWebUi(){return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui","index.html"));}
   static string Option(string[] args,string name,string fallback){int index=Array.IndexOf(args,name);if(index<0)return fallback;if(index+1==args.Length||args[index+1].StartsWith("--"))throw new DomainError("MISSING_ARGUMENT");return args[index+1];}
+  static void Emit(string[] args,string value){Console.WriteLine(value);var path=Option(args,"--result-file",null);if(String.IsNullOrWhiteSpace(path))return;var full=Path.GetFullPath(path);var parent=Path.GetDirectoryName(full);if(!String.IsNullOrEmpty(parent))Directory.CreateDirectory(parent);File.WriteAllText(full,value,new System.Text.UTF8Encoding(false));}
+  static void ErrorFile(string[] args,string message){var path=Option(args,"--result-file",null);if(String.IsNullOrWhiteSpace(path))return;var full=Path.GetFullPath(path);var parent=Path.GetDirectoryName(full);if(!String.IsNullOrEmpty(parent))Directory.CreateDirectory(parent);File.WriteAllText(full,Json.Write(new{ok=false,error=message}),new System.Text.UTF8Encoding(false));}
   public static object Probe(string server){
    var builder=new SqlConnectionStringBuilder{DataSource=server,InitialCatalog="SICNET",IntegratedSecurity=true,ConnectTimeout=5,ApplicationName="Lineboard Readonly Probe"};
    using(var c=new SqlConnection(builder.ConnectionString)){c.Open();return new{
