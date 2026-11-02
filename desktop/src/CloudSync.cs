@@ -39,9 +39,9 @@ namespace Lineboard {
    };
   }
   public Dictionary<string,object> Reconcile(){
-   if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int imported=0;
-   if(pull!=null){var snapshot=pull();if(!snapshot.ContainsKey("state")||Convert.ToString(snapshot["state"])!="snapshot")throw new DomainError("INVALID_CLOUD_SNAPSHOT");if(!String.Equals(Convert.ToString(snapshot["instance_id"]),store.InstanceId,StringComparison.OrdinalIgnoreCase))throw new DomainError("INVALID_CLOUD_SNAPSHOT");var result=store.ImportCloudSnapshot(snapshot);imported=Convert.ToInt32(result["imported"]);object raw;var cloudUnits=snapshot.TryGetValue("units",out raw)?Json.Read<List<Dictionary<string,object>>>(Json.Write(raw)):new List<Dictionary<string,object>>();store.QueueCatalogMissing(cloudUnits);}
-   var pushed=Push();pushed["imported"]=imported;return pushed;
+    if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int imported=0;int updated=0;
+    if(pull!=null){var snapshot=pull();if(!snapshot.ContainsKey("state")||Convert.ToString(snapshot["state"])!="snapshot")throw new DomainError("INVALID_CLOUD_SNAPSHOT");if(!String.Equals(Convert.ToString(snapshot["instance_id"]),store.InstanceId,StringComparison.OrdinalIgnoreCase))throw new DomainError("INVALID_CLOUD_SNAPSHOT");var result=store.ImportCloudSnapshot(snapshot);imported=Convert.ToInt32(result["imported"]);if(result.ContainsKey("updated"))updated=Convert.ToInt32(result["updated"]);object raw;var cloudUnits=snapshot.TryGetValue("units",out raw)?Json.Read<List<Dictionary<string,object>>>(Json.Write(raw)):new List<Dictionary<string,object>>();store.QueueCatalogMissing(cloudUnits);}
+    var pushed=Push();pushed["imported"]=imported;pushed["updated"]=updated;return pushed;
   }
   public Dictionary<string,object> Push(){lock(gate){
    if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");int sent=0;

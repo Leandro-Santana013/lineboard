@@ -227,18 +227,48 @@ namespace Lineboard {
   static decimal CloudDecimal(Dictionary<string,object> row,string key){object value;return row!=null&&row.TryGetValue(key,out value)&&value!=null?Convert.ToDecimal(value,CultureInfo.InvariantCulture):0m;}
   static int CloudInt(Dictionary<string,object> row,string key){object value;return row!=null&&row.TryGetValue(key,out value)&&value!=null?Convert.ToInt32(value,CultureInfo.InvariantCulture):0;}
   static long CloudLong(Dictionary<string,object> row,string key){object value;return row!=null&&row.TryGetValue(key,out value)&&value!=null?Convert.ToInt64(value,CultureInfo.InvariantCulture):0L;}
+  static void AddPendingBarcode(HashSet<string> barcodes,object raw){
+   if(raw==null)return;var unit=Json.Read<Dictionary<string,object>>(Json.Write(raw));var barcode=CloudText(unit,"barcode");if(!String.IsNullOrWhiteSpace(barcode))barcodes.Add(barcode);
+  }
+  static HashSet<string> PendingBarcodes(SqlConnection c,SqlTransaction tx){
+   var barcodes=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+   foreach(var row in Rows(c,tx,"SELECT kind,payload FROM lineboard.Outbox WHERE state='pending'")){
+    try{
+     var kind=Convert.ToString(row["kind"]);var payload=Json.Read<Dictionary<string,object>>(Convert.ToString(row["payload"]));object raw;
+     if(kind=="unit.upsert")AddPendingBarcode(barcodes,payload);
+     else if(kind=="stock.adjusted"&&payload.TryGetValue("unit",out raw))AddPendingBarcode(barcodes,raw);
+     else if(kind=="sale.confirmed"&&payload.TryGetValue("items",out raw))foreach(var item in Json.Read<List<Dictionary<string,object>>>(Json.Write(raw)))AddPendingBarcode(barcodes,item);
+    }catch{}
+   }
+   return barcodes;
+  }
   public Dictionary<string,object> ImportCloudSnapshot(Dictionary<string,object> snapshot){
    object raw;if(snapshot==null||!snapshot.TryGetValue("units",out raw)||raw==null)throw new DomainError("INVALID_CLOUD_SNAPSHOT");
-   var units=Json.Read<List<Dictionary<string,object>>>(Json.Write(raw));int imported=0;int existing=0;int receipt=0;long maximumBarcode=0;
+   var units=Json.Read<List<Dictionary<string,object>>>(Json.Write(raw));int imported=0;int updated=0;int existing=0;int receipt=0;long maximumBarcode=0;
    using(var c=Open())using(var tx=c.BeginTransaction(IsolationLevel.Serializable)){
+    var pending=PendingBarcodes(c,tx);
     foreach(var remote in units){
      var barcode=Validation.Barcode(CloudText(remote,"barcode"));var unitId=Validation.Id(CloudText(remote,"stock_item_id"));var productId=Validation.Id(CloudText(remote,"product_id"));var variantId=Validation.Id(CloudText(remote,"variant_id"));
-     var local=Rows(c,tx,"SELECT id FROM lineboard.Units WHERE barcode=@barcode","@barcode",barcode).SingleOrDefault();
-     if(local!=null){if(!String.Equals(Convert.ToString(local["id"]),unitId.ToString(),StringComparison.OrdinalIgnoreCase))throw new DomainError("CLOUD_LOCAL_CONFLICT");existing++;continue;}
-     if(Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM dbo.TABEST1 WHERE codigo=@barcode","@barcode",barcode))!=0)throw new DomainError("CLOUD_LOCAL_CONFLICT");
      var fields=new UnitFields{name=CloudText(remote,"name"),brand=CloudText(remote,"brand"),category=CloudText(remote,"category"),color=CloudText(remote,"color"),size=CloudText(remote,"size"),cost=CloudDecimal(remote,"cost"),price=CloudDecimal(remote,"price"),location=CloudText(remote,"location"),photo=CloudText(remote,"photo_path"),notes=CloudText(remote,"notes"),internal_code=CloudText(remote,"internal_code"),fiscal=new Dictionary<string,object>()};
      foreach(var name in Fiscal.TextFields.Keys.Concat(Fiscal.Numbers)){object value;if(remote.TryGetValue(name,out value)&&value!=null)fields.fiscal[name]=value;}
      Validation.Fields(fields);var quantity=CloudInt(remote,"quantity");var revision=CloudLong(remote,"revision");if((quantity!=0&&quantity!=1)||revision<1)throw new DomainError("INVALID_CLOUD_SNAPSHOT");
+     var local=Rows(c,tx,"SELECT u.id,u.sic_id,u.revision,u.expected_quantity,p.quantidade AS current_quantity FROM lineboard.Units u JOIN dbo.TABEST1 p ON p.controle=u.sic_id WHERE u.barcode=@barcode","@barcode",barcode).SingleOrDefault();
+     if(local!=null){
+      if(!String.Equals(Convert.ToString(local["id"]),unitId.ToString(),StringComparison.OrdinalIgnoreCase))throw new DomainError("CLOUD_LOCAL_CONFLICT");
+      existing++;if(pending.Contains(barcode))continue;
+      var localRevision=Convert.ToInt64(local["revision"]);var currentQuantity=Convert.ToInt32(local["current_quantity"]);var expectedQuantity=Convert.ToInt32(local["expected_quantity"]);
+      if(currentQuantity!=expectedQuantity)throw new DomainError("CLOUD_LOCAL_CONFLICT");
+      if(revision<localRevision)continue;
+      if(revision==localRevision){if(currentQuantity!=quantity)throw new DomainError("CLOUD_LOCAL_CONFLICT");continue;}
+      var existingSicId=Convert.ToInt32(local["sic_id"]);WriteFields(c,tx,existingSicId,fields);
+      if(currentQuantity!=quantity){
+       NonQuery(c,tx,"UPDATE dbo.TABEST1 SET quantidade=@quantity WHERE controle=@sic; INSERT dbo.TABINV(data,lkproduto,quantidade,acerto) VALUES(CONVERT(date,GETDATE()),@sic,@quantity,1)","@quantity",quantity,"@sic",existingSicId);
+       NonQuery(c,tx,"INSERT lineboard.Movements(operation_id,unit_id,delta,reason) VALUES(@operation,@unit,@delta,'cloud_sync')","@operation",Guid.NewGuid(),"@unit",unitId,"@delta",quantity-currentQuantity);
+      }
+      NonQuery(c,tx,"UPDATE lineboard.Units SET category=@category,color=@color,size=@size,location=@location,photo=@photo,expected_quantity=@quantity,revision=@revision,updated_at=SYSUTCDATETIME() WHERE id=@id","@category",fields.category,"@color",fields.color,"@size",fields.size,"@location",fields.location,"@photo",fields.photo,"@quantity",quantity,"@revision",revision,"@id",unitId);
+      updated++;continue;
+     }
+     if(Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM dbo.TABEST1 WHERE codigo=@barcode","@barcode",barcode))!=0)throw new DomainError("CLOUD_LOCAL_CONFLICT");
      if(receipt==0)receipt=Convert.ToInt32(Scalar(c,tx,"INSERT dbo.TABEST2A(data,nota,obs,frete,tipo) OUTPUT inserted.controle VALUES(CONVERT(date,GETDATE()),0,@note,0,'E')","@note","Lineboard cloud bootstrap"));
      int sicId=Convert.ToInt32(Scalar(c,tx, @"INSERT dbo.TABEST1(codigo,codinterno,produto,fabricante,precocusto,customedio,precovenda,quantidade,estminimo,unidade,lucro,comissao,moeda,obs,inativo,naosaitabela,datainc,qntembalagem)
        OUTPUT inserted.controle VALUES(@code,@internal,@name,@brand,@cost,@cost,@price,@quantity,0,'UN',0,0,'R$',@notes,0,0,GETDATE(),1)","@code",barcode,"@internal",fields.internal_code,"@name",fields.name,"@brand",fields.brand,"@cost",fields.cost,"@price",fields.price,"@quantity",quantity,"@notes",fields.notes));
@@ -251,7 +281,7 @@ namespace Lineboard {
     if(imported>0&&maximumBarcode>0){var current=Convert.ToInt64(Scalar(c,tx,"SELECT ISNULL(CAST(current_value AS bigint),0) FROM sys.sequences WHERE name='BarcodeNumber' AND schema_id=SCHEMA_ID('lineboard')"));var next=maximumBarcode+1;if(next>999999999999L)throw new DomainError("BARCODE_RANGE_EXHAUSTED");if(next>current)NonQuery(c,tx,"ALTER SEQUENCE lineboard.BarcodeNumber RESTART WITH "+next.ToString(CultureInfo.InvariantCulture));}
     tx.Commit();
    }
-   return new Dictionary<string,object>{{"state",imported==0?"up_to_date":"imported"},{"imported",imported},{"existing",existing},{"total",units.Count}};
+   return new Dictionary<string,object>{{"state",imported==0&&updated==0?"up_to_date":"imported"},{"imported",imported},{"updated",updated},{"existing",existing},{"total",units.Count}};
   }
   public List<Dictionary<string,object>> Sales(){using(var c=Open())return Rows(c,null,"SELECT TOP(100) id,sic_id,payment,total,fiscal_status,created_at FROM lineboard.Sales ORDER BY created_at DESC");}
   static object ReportDate(string value){
