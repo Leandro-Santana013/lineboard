@@ -10,7 +10,7 @@ namespace Lineboard {
   [STAThread] static int Main(string[] args){
    try{
      string workspace=Option(args,"--workspace",Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","..")));
-     string server=Option(args,"--server",@"(localdb)\MSSQLLocalDB");
+      string server=Option(args,"--server",ConfiguredServer());
      bool explicitDatabase=Array.IndexOf(args,"--database")>=0;
      string database=Option(args,"--database",explicitDatabase?"LINEBOARD_LAB":"SICNET");
     if(Array.IndexOf(args,"--probe")>=0){Emit(args,Json.Write(Probe(server)));return 0;}
@@ -50,7 +50,11 @@ namespace Lineboard {
     }
    }catch(Exception error){Console.Error.WriteLine(error.Message);bool command=Array.Exists(args,a=>a=="--serve"||a=="--self-test"||a=="--health"||a=="--probe"||a=="--export-outbox"||a=="--render-preview"||a=="--render-web-preview"||a=="--render-legacy-preview"||a=="--web-self-test"||a=="--web-capture"||a=="--web-capture-large"||a=="--production"||a=="--confirm-production");if(!command)MessageBox.Show("Não foi possível iniciar o Lineboard.\n\n"+error.Message+"\n\nConfira a base isolada e a permissão da API local. Consulte desktop/README.md. Para usar apenas neste computador, inicie com --host localhost.","Lineboard",MessageBoxButtons.OK,MessageBoxIcon.Error);return 1;}
   }
-  internal static bool HasWebUi(){return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui","index.html"));}
+   static string ConfiguredServer(){
+    var server=Environment.GetEnvironmentVariable("LINEBOARD_SIC_SERVER");
+    return String.IsNullOrWhiteSpace(server)?@"(localdb)\MSSQLLocalDB":server.Trim();
+   }
+   internal static bool HasWebUi(){return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui","index.html"));}
   static string Option(string[] args,string name,string fallback){int index=Array.IndexOf(args,name);if(index<0)return fallback;if(index+1==args.Length||args[index+1].StartsWith("--"))throw new DomainError("MISSING_ARGUMENT");return args[index+1];}
   static void Emit(string[] args,string value){Console.WriteLine(value);var path=Option(args,"--result-file",null);if(String.IsNullOrWhiteSpace(path))return;var full=Path.GetFullPath(path);var parent=Path.GetDirectoryName(full);if(!String.IsNullOrEmpty(parent))Directory.CreateDirectory(parent);File.WriteAllText(full,value,new System.Text.UTF8Encoding(false));}
   static void ErrorFile(string[] args,string message){var path=Option(args,"--result-file",null);if(String.IsNullOrWhiteSpace(path))return;var full=Path.GetFullPath(path);var parent=Path.GetDirectoryName(full);if(!String.IsNullOrEmpty(parent))Directory.CreateDirectory(parent);File.WriteAllText(full,Json.Write(new{ok=false,error=message}),new System.Text.UTF8Encoding(false));}

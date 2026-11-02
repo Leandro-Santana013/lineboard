@@ -1,9 +1,12 @@
 param(
     [string]$SyncUrl = 'https://isktnezzanqpcrkkqldw.supabase.co/functions/v1/sic-sync',
+    [string]$Server,
     [switch]$SkipInitialSync
 )
 
 $ErrorActionPreference = 'Stop'
+$configuredServer = if ($Server) { $Server.Trim() } else { [Environment]::GetEnvironmentVariable('LINEBOARD_SIC_SERVER', [EnvironmentVariableTarget]::User) }
+if (-not $configuredServer) { $configuredServer = '(localdb)\MSSQLLocalDB' }
 
 $uri = $null
 if (-not [Uri]::TryCreate($SyncUrl, [UriKind]::Absolute, [ref]$uri) -or
@@ -51,8 +54,9 @@ if ($token -cnotmatch '^slb_live_[a-f0-9]{64}$') {
 
 [Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_URL', $SyncUrl, [EnvironmentVariableTarget]::User)
 [Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', $token, [EnvironmentVariableTarget]::User)
+[Environment]::SetEnvironmentVariable('LINEBOARD_SIC_SERVER', $configuredServer, [EnvironmentVariableTarget]::User)
 $token = $null
-Write-Host 'Configuracao cloud salva no usuario atual do Windows.'
+Write-Host ('Configuracao cloud salva no usuario atual do Windows. SIC server: {0}' -f $configuredServer)
 
 if ($SkipInitialSync) {
     Write-Host 'Bootstrap inicial ignorado por -SkipInitialSync.'
@@ -69,8 +73,8 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $executable)) {
 
 $resultPath = Join-Path ([IO.Path]::GetTempPath()) ('lineboard-bootstrap-' + [Guid]::NewGuid().ToString('N') + '.json')
 try {
-    $arguments = @('--sync-now', '--result-file', ('"' + $resultPath + '"'))
-    $process = Start-Process -FilePath $executable -ArgumentList $arguments -WorkingDirectory $desktopRoot -WindowStyle Hidden -Wait -PassThru
+    $argumentLine = '--server "' + $configuredServer + '" --sync-now --result-file "' + $resultPath + '"'
+    $process = Start-Process -FilePath $executable -ArgumentList $argumentLine -WorkingDirectory $desktopRoot -WindowStyle Hidden -Wait -PassThru
     $exitCode = $process.ExitCode
     if (-not (Test-Path -LiteralPath $resultPath)) {
         throw 'O executavel nao produziu o resultado do bootstrap.'
