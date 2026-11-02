@@ -49,9 +49,10 @@ if ($SkipInitialSync) {
 
 $desktopRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $executable = Join-Path $desktopRoot 'bin\Lineboard.exe'
-if (-not (Test-Path -LiteralPath $executable)) {
-    & (Join-Path $PSScriptRoot 'build.ps1')
-    if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel compilar o Lineboard.exe.' }
+Write-Host 'Compilando o Lineboard.exe atual antes do bootstrap...'
+& (Join-Path $PSScriptRoot 'build.ps1')
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $executable)) {
+    throw 'Nao foi possivel compilar o Lineboard.exe.'
 }
 
 $resultPath = Join-Path ([IO.Path]::GetTempPath()) ('lineboard-bootstrap-' + [Guid]::NewGuid().ToString('N') + '.json')
