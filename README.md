@@ -22,6 +22,10 @@ Instruções completas e limites em [desktop/README.md](desktop/README.md).
 
 # O modo padrao usa o SICNET; para laboratorio use -Lab.
 
+# Em outro PC, uma unica vez: pede o token sem exibi-lo, configura o usuario
+# do Windows e importa todos os registros atuais do Supabase.
+.\desktop\scripts\configure-cloud.ps1
+
 # Nova cópia isolada e testes SQL Server reais:
 .\desktop\scripts\test.ps1
 

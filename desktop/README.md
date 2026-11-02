@@ -161,6 +161,11 @@ ou no controle de versão. A URL deve ser HTTPS e terminar em
 `/functions/v1/sic-sync` no domínio do projeto Supabase. `--sync-now` executa
 o mesmo ciclo imediatamente para diagnóstico ou carga inicial.
 
+Em uma nova máquina, execute uma vez `.\desktop\scripts\configure-cloud.ps1`.
+O script pede o token em campo oculto, configura as variáveis no usuário atual
+do Windows e executa o bootstrap inicial. O token não é gravado no projeto,
+no Git nem em arquivo de log; depois disso, basta abrir o `Lineboard.exe`.
+
 O servidor deriva a organização da credencial, registra a instalação ativa,
 preserva IDs, revisões e referências das peças e aplica a mesma operação de baixa
 transacional usada pelo estoque central. Ao abrir uma instalação nova, o snapshot
