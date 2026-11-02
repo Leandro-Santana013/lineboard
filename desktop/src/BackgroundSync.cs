@@ -10,7 +10,9 @@ namespace Lineboard {
   readonly object lifecycle=new object();Timer timer;int running;bool disposed;
   public volatile string State;
   public BackgroundSync(CloudSync sync):this(null,sync){}
-  public BackgroundSync(SicStore store,CloudSync sync):this(sync.Configured,()=>sync.Reconcile(),30000){this.store=store;if(this.store!=null)this.store.Changed+=Request;}
+  // Pull frequently enough for another desktop to reflect a cloud change
+  // without requiring a restart, while local mutations still request sync immediately.
+  public BackgroundSync(SicStore store,CloudSync sync):this(sync.Configured,()=>sync.Reconcile(),5000){this.store=store;if(this.store!=null)this.store.Changed+=Request;}
   internal BackgroundSync(bool configured,Func<Dictionary<string,object>> push,int interval){this.configured=configured;this.push=push;this.interval=interval;State=configured?"waiting":"not_configured";}
   public void Start(){lock(lifecycle){if(disposed||!configured||timer!=null)return;timer=new Timer(s=>Attempt(),null,0,interval);}}
   public void Request(){lock(lifecycle){if(disposed||!configured)return;ThreadPool.QueueUserWorkItem(s=>Attempt());}}
