@@ -27,6 +27,12 @@ finally {
     }
 }
 
+$token = $token.Trim()
+if (($token.StartsWith("'") -and $token.EndsWith("'")) -or
+    ($token.StartsWith('"') -and $token.EndsWith('"'))) {
+    $token = $token.Substring(1, $token.Length - 2).Trim()
+}
+
 if ($token -notmatch '^slb_live_[a-f0-9]{64}$') {
     throw 'Token invalido. Ele deve seguir o formato slb_live_ mais 64 caracteres hexadecimais.'
 }
