@@ -82,7 +82,7 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }) {
     <Text size="sm" c="dimmed">JPG/JPEG, PNG ou WebP, até 5 MB. A imagem é compartilhada pelas variações deste produto.</Text>
     <ProductPhotoPreview path={value} />
     <Group>
-      <Button component="label" variant="light" color="teal" disabled={disabled || uploading}>
+      <Button component="label" variant="light" color="brand" disabled={disabled || uploading}>
         {uploading ? 'Enviando imagem…' : value ? 'Trocar imagem' : 'Adicionar imagem'}
         <input type="file" aria-label="Escolher imagem do produto" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" hidden disabled={disabled || uploading} onChange={select} />
       </Button>

@@ -6,8 +6,8 @@ using System.Windows.Forms;
 namespace Lineboard {
  // Shared desktop styles. These controls retain native keyboard and accessibility behavior.
  internal static class DesktopTheme {
-  public static readonly Color Canvas=Color.FromArgb(242,246,250), Ink=Color.FromArgb(20,34,53), Muted=Color.FromArgb(95,111,132);
-  public static readonly Color Border=Color.FromArgb(222,230,238), Teal=Color.FromArgb(0,126,135), Navy=Color.FromArgb(19,39,57);
+  public static readonly Color Canvas=Color.FromArgb(245,245,245), Ink=Color.FromArgb(32,32,32), Muted=Color.FromArgb(109,109,109);
+  public static readonly Color Border=Color.FromArgb(229,229,229), Accent=Color.FromArgb(41,41,41), Sidebar=Color.FromArgb(17,17,17);
   public static Font TextFont(float size=10,FontStyle style=FontStyle.Regular){return new Font("Segoe UI",size,style);}
   public static Label Label(string text,float size=10,Color? color=null,FontStyle style=FontStyle.Regular){
    return new Label{Text=text,Font=TextFont(size,style),ForeColor=color??Ink,BackColor=Color.Transparent,AutoEllipsis=true,TextAlign=ContentAlignment.MiddleLeft,Dock=DockStyle.Fill,Margin=Padding.Empty};
@@ -17,13 +17,20 @@ namespace Lineboard {
    p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
    foreach(var h in heights)p.RowStyles.Add(new RowStyle(h<0?SizeType.Percent:SizeType.Absolute,h<0?100:h));return p;
   }
-  public static void Form(Form form){form.Font=TextFont();form.ForeColor=Ink;form.BackColor=Canvas;form.StartPosition=FormStartPosition.CenterParent;form.AutoScaleMode=AutoScaleMode.Dpi;}
+  public static void Form(Form form){form.Font=TextFont();form.ForeColor=Ink;form.BackColor=Canvas;form.StartPosition=FormStartPosition.CenterParent;form.AutoScaleMode=AutoScaleMode.Dpi;form.Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);}
+  public static PictureBox StoreLogo(){
+   var box=new PictureBox{Dock=DockStyle.Fill,SizeMode=PictureBoxSizeMode.Zoom,BackColor=Color.Black,AccessibleName="Lines Boardshop",Margin=Padding.Empty};
+   using(var stream=typeof(DesktopTheme).Assembly.GetManifestResourceStream("Lineboard.StoreLogo")){
+    if(stream!=null)using(var source=Image.FromStream(stream)){box.Image=new Bitmap(source);}
+   }
+   box.Disposed+=(s,e)=>{if(box.Image!=null)box.Image.Dispose();};return box;
+  }
   public static void Grid(DataGridView grid){
    grid.BackgroundColor=Color.White;grid.BorderStyle=BorderStyle.None;grid.RowHeadersVisible=false;grid.EnableHeadersVisualStyles=false;
    grid.GridColor=Border;grid.CellBorderStyle=DataGridViewCellBorderStyle.SingleHorizontal;grid.ColumnHeadersBorderStyle=DataGridViewHeaderBorderStyle.None;
    grid.ColumnHeadersHeight=38;grid.ColumnHeadersHeightSizeMode=DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-   grid.ColumnHeadersDefaultCellStyle=new DataGridViewCellStyle{BackColor=Color.FromArgb(242,246,250),ForeColor=Muted,Font=TextFont(8.5f,FontStyle.Bold),Padding=new Padding(10,0,8,0),SelectionBackColor=Color.FromArgb(242,246,250),SelectionForeColor=Muted};
-   grid.DefaultCellStyle=new DataGridViewCellStyle{BackColor=Color.White,ForeColor=Ink,SelectionBackColor=Color.FromArgb(229,245,245),SelectionForeColor=Ink,Font=TextFont(9.5f),Padding=new Padding(10,0,8,0)};
+   grid.ColumnHeadersDefaultCellStyle=new DataGridViewCellStyle{BackColor=Color.FromArgb(245,245,245),ForeColor=Muted,Font=TextFont(8.5f,FontStyle.Bold),Padding=new Padding(10,0,8,0),SelectionBackColor=Color.FromArgb(245,245,245),SelectionForeColor=Muted};
+   grid.DefaultCellStyle=new DataGridViewCellStyle{BackColor=Color.White,ForeColor=Ink,SelectionBackColor=Color.FromArgb(242,242,242),SelectionForeColor=Ink,Font=TextFont(9.5f),Padding=new Padding(10,0,8,0)};
    grid.RowTemplate.Height=62;grid.AllowUserToResizeRows=false;grid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill;
   }
   public static GraphicsPath Round(RectangleF bounds,float radius){
@@ -64,10 +71,10 @@ namespace Lineboard {
   protected override void OnMouseLeave(EventArgs e){hover=false;Invalidate();base.OnMouseLeave(e);}
   protected override void OnPaint(PaintEventArgs e){
    var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;
-   Color fill=Navigation?(Active?Color.FromArgb(23,68,83):hover?Color.FromArgb(30,54,73):DesktopTheme.Navy):Primary?(Enabled?(hover?Color.FromArgb(0,108,117):DesktopTheme.Teal):Color.FromArgb(218,228,232)):(Enabled?(hover?Color.FromArgb(238,247,249):Color.White):Color.FromArgb(246,248,250));
-   Color ink=Navigation?Color.FromArgb(225,238,246):Primary&&Enabled?Color.White:Enabled?DesktopTheme.Teal:Color.FromArgb(128,143,155);
+   Color fill=Navigation?(Active?Color.FromArgb(60,60,60):hover?Color.FromArgb(50,50,50):DesktopTheme.Sidebar):Primary?(Enabled?(hover?Color.FromArgb(86,86,86):DesktopTheme.Accent):Color.FromArgb(226,226,226)):(Enabled?(hover?Color.FromArgb(245,245,245):Color.White):Color.FromArgb(248,248,248));
+   Color ink=Navigation?Color.FromArgb(236,236,236):Primary&&Enabled?Color.White:Enabled?DesktopTheme.Accent:Color.FromArgb(141,141,141);
    using(var path=DesktopTheme.Round(new RectangleF(.5f,.5f,Width-1,Height-1),6))using(var brush=new SolidBrush(fill)){g.FillPath(brush,path);if(!Navigation&&!Primary)using(var pen=new Pen(DesktopTheme.Border))g.DrawPath(pen,path);}
-   if(Navigation&&Active)using(var brush=new SolidBrush(Color.FromArgb(16,178,184)))g.FillRectangle(brush,0,10,3,Height-20);
+   if(Navigation&&Active)using(var brush=new SolidBrush(Color.FromArgb(144,144,144)))g.FillRectangle(brush,0,10,3,Height-20);
    int icon=String.IsNullOrEmpty(Glyph)?0:20;var measured=TextRenderer.MeasureText(Text,Font);int left=Navigation?14:Math.Max(8,(Width-measured.Width-icon-(icon==0?0:8))/2);
    if(icon>0)DesktopTheme.Icon(g,Glyph,new Rectangle(left,(Height-20)/2,20,20),ink);
    TextRenderer.DrawText(g,Text,Font,new Rectangle(left+(icon==0?0:28),0,Width-left-(icon==0?0:28)-6,Height),ink,TextFormatFlags.VerticalCenter|TextFormatFlags.Left|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
@@ -77,7 +84,7 @@ namespace Lineboard {
  internal sealed class EmptyState : Control {
   public string Heading="Nenhuma peça cadastrada",Description="Cadastre o primeiro produto para começar.",Glyph="box";
   public EmptyState(){SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint|ControlStyles.ResizeRedraw,true);BackColor=Color.White;Dock=DockStyle.Fill;TabStop=false;}
-  protected override void OnPaint(PaintEventArgs e){int y=Math.Max(18,(Height-130)/2);DesktopTheme.Icon(e.Graphics,Glyph,new Rectangle((Width-36)/2,y,36,36),Color.FromArgb(139,163,178));using(var title=DesktopTheme.TextFont(11,FontStyle.Bold))using(var body=DesktopTheme.TextFont(9)){TextRenderer.DrawText(e.Graphics,Heading,title,new Rectangle(12,y+50,Width-24,28),DesktopTheme.Ink,TextFormatFlags.HorizontalCenter|TextFormatFlags.EndEllipsis);TextRenderer.DrawText(e.Graphics,Description,body,new Rectangle(18,y+84,Width-36,50),DesktopTheme.Muted,TextFormatFlags.HorizontalCenter|TextFormatFlags.WordBreak);}base.OnPaint(e);}
+  protected override void OnPaint(PaintEventArgs e){int y=Math.Max(18,(Height-130)/2);DesktopTheme.Icon(e.Graphics,Glyph,new Rectangle((Width-36)/2,y,36,36),Color.FromArgb(159,159,159));using(var title=DesktopTheme.TextFont(11,FontStyle.Bold))using(var body=DesktopTheme.TextFont(9)){TextRenderer.DrawText(e.Graphics,Heading,title,new Rectangle(12,y+50,Width-24,28),DesktopTheme.Ink,TextFormatFlags.HorizontalCenter|TextFormatFlags.EndEllipsis);TextRenderer.DrawText(e.Graphics,Description,body,new Rectangle(18,y+84,Width-36,50),DesktopTheme.Muted,TextFormatFlags.HorizontalCenter|TextFormatFlags.WordBreak);}base.OnPaint(e);}
  }
  internal sealed class CartItem : Panel {
   readonly string name,variant,barcode,price;readonly ActionButton remove;

@@ -59,6 +59,7 @@ import {
 } from '@tabler/icons-react';
 import { callHost, hasDesktopHost, requestId } from './bridge';
 import { ProductPhotoField, ProductPhotoPreview } from './ProductPhoto.jsx';
+import storeLogo from './assets/lines-boardshop.jpg';
 
 const pt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const integer = new Intl.NumberFormat('pt-BR');
@@ -255,7 +256,7 @@ function App() {
     padding={0}
     navbar={{ width: 252, breakpoint: 0 }}
     header={{ height: 0 }}
-    styles={{ main: { background: '#f2f6fa', minHeight: '100vh' }, navbar: { background: '#132739', border: 0 } }}
+    styles={{ main: { background: '#f5f5f5', minHeight: '100vh' }, navbar: { background: '#111111', border: 0 } }}
   >
     <AppShell.Navbar p="md">
       <Sidebar active={view} navigate={navigate} cartCount={cart.items.length} environmentMode={environmentMode} />
@@ -264,7 +265,7 @@ function App() {
       <Box className={`app-content ${view === 'inventory' || view === 'checkout' ? 'operation-shell' : ''}`}>
         {!hasDesktopHost() && !hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md">Abra este conteúdo pelo executável desktop para acessar o SIC.</Alert> : null}
         {hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md" title="Desktop necessário">{hostError.message || 'Abra o Lineboard pelo aplicativo desktop para acessar o SIC.'}</Alert> : null}
-        {message ? <Alert mb="md" color={message.type === 'error' ? 'red' : 'teal'} icon={message.type === 'error' ? <IconX size={18} /> : <IconCircleCheck size={18} />} withCloseButton onClose={() => setMessage(null)}>{message.text}</Alert> : null}
+        {message ? <Alert mb="md" color={message.type === 'error' ? 'red' : 'brand'} icon={message.type === 'error' ? <IconX size={18} /> : <IconCircleCheck size={18} />} withCloseButton onClose={() => setMessage(null)}>{message.text}</Alert> : null}
         {content}
       </Box>
     </AppShell.Main>
@@ -283,16 +284,16 @@ function Sidebar({ active, navigate, cartCount, environmentMode }) {
   ];
   return <Stack justify="space-between" h="100%">
     <Stack gap="lg">
-      <Group gap="sm" mb="md" className="brand">
-        <ThemeIcon size={38} radius={4} color="teal"><IconBox size={25} /></ThemeIcon>
-        <Box><Text fw={800} size="lg" c="white" lts=".04em">LINEBOARD</Text><Text size="xs" c="#9fbacc">Gestão da loja</Text></Box>
-      </Group>
-      <Text size="xs" c="#91acbf" fw={700} lts=".08em">OPERAÇÃO</Text>
-      <Stack gap={5}>{links.map(({ key, label, icon: Icon }) => <Button key={key} variant="subtle" justify="flex-start" leftSection={<Icon size={22} />} rightSection={key === 'checkout' && cartCount ? <Badge color="cyan" variant="filled" size="sm" circle>{cartCount}</Badge> : null} className={`nav-link ${active === key ? 'active' : ''}`} onClick={() => navigate(key)}>{label}</Button>)}</Stack>
+      <Box className="brand">
+        <img className="brand-logo" src={storeLogo} alt="Lines Boardshop" />
+        <Text className="brand-caption" size="xs" c="#bdbdbd" ta="center">LINEBOARD · Gestão da loja</Text>
+      </Box>
+      <Text size="xs" c="#bdbdbd" fw={700} lts=".08em">OPERAÇÃO</Text>
+      <Stack gap={5}>{links.map(({ key, label, icon: Icon }) => <Button key={key} variant="subtle" justify="flex-start" leftSection={<Icon size={22} />} rightSection={key === 'checkout' && cartCount ? <Badge color="brand" variant="filled" size="sm" circle>{cartCount}</Badge> : null} className={`nav-link ${active === key ? 'active' : ''}`} onClick={() => navigate(key)}>{label}</Button>)}</Stack>
     </Stack>
     <Stack gap="sm">
       <Button variant="subtle" justify="flex-start" leftSection={<IconSettings size={22} />} className={`nav-link ${active === 'settings' ? 'active' : ''}`} onClick={() => navigate('settings')}>Configurações</Button>
-      <Text size="sm" c={environmentMode === 'production' ? '#8de3b4' : '#ffc45a'}><span className="lab-dot" /> {environmentMode === 'production' ? 'SICNET · produção' : 'Modo laboratório'}</Text>
+      <Text size="sm" c={environmentMode === 'production' ? '#dddddd' : '#ffc45a'}><span className={`lab-dot ${environmentMode === 'production' ? 'production' : ''}`} /> {environmentMode === 'production' ? 'SICNET · produção' : 'Modo laboratório'}</Text>
     </Stack>
   </Stack>;
 }
@@ -315,18 +316,18 @@ function InventoryPage({ catalog, cart, selected, setSelected, addCart, onEdit, 
   });
   const selectedUnit = selected ? catalog.find((unit) => unit.barcode === selected) : null;
   return <>
-    <PageHeading title="Estoque" description="Consulte, edite e ajuste as peças disponíveis na loja." action={<Button leftSection={<IconPlus size={18} />} color="teal" onClick={onNew}>Novo produto</Button>} />
+    <PageHeading title="Estoque" description="Consulte, edite e ajuste as peças disponíveis na loja." action={<Button leftSection={<IconPlus size={18} />} color="brand" onClick={onNew}>Novo produto</Button>} />
     <Alert color="yellow" icon={<IconInfoCircle size={18} />} mb="md">{environmentMode === 'production' ? 'SICNET · Emissão fiscal pendente de configuração' : 'Ambiente de teste · Emissão fiscal pendente de configuração'}</Alert>
     <Paper withBorder radius="md" p="lg" className="inventory-card">
       <Group justify="space-between" mb="md"><Box><Title order={3}>Peças em estoque</Title><Text size="sm" c="dimmed">{catalog.length} peças rastreadas individualmente</Text></Box><Group><TextInput aria-label="Buscar no estoque" placeholder="Buscar produto ou código" leftSection={<IconBarcode size={17} />} value={query} onChange={(event) => setQuery(event.currentTarget.value)} /><Select aria-label="Filtrar estoque" w={155} value={filter} onChange={(value) => setFilter(value || 'all')} data={[{ value: 'all', label: 'Todas as peças' }, { value: 'available', label: 'Disponíveis' }, { value: 'cart', label: 'No caixa' }, { value: 'empty', label: 'Sem saldo' }, { value: 'conflict', label: 'Em conflito' }]} /></Group></Group>
       <ScrollArea type="auto" className="inventory-scroll"><Table highlightOnHover withColumnBorders={false} verticalSpacing="sm"><Table.Thead><Table.Tr><Table.Th>PRODUTO</Table.Th><Table.Th className="inventory-barcode-column">CÓDIGO</Table.Th><Table.Th>COR / TAM.</Table.Th><Table.Th ta="right">PREÇO</Table.Th><Table.Th>SITUAÇÃO</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{filtered.map((unit) => <InventoryRow key={unit.barcode} unit={unit} inCart={cart.items.some((item) => item.barcode === unit.barcode)} selected={selected === unit.barcode} onSelect={() => setSelected(unit.barcode)} />)}</Table.Tbody></Table>{filtered.length === 0 ? <EmptyState title={catalog.length ? 'Nenhum resultado' : 'Nenhuma peça cadastrada'} text={catalog.length ? 'Altere a busca ou o filtro para continuar.' : 'Cadastre o primeiro produto para começar.'} /> : null}</ScrollArea>
-      <Group justify="space-between" mt="md" className="inventory-actions"><Text size="sm" c="dimmed">{selectedUnit ? '1 peça selecionada' : 'Selecione uma peça no estoque'}</Text><Group gap="xs"><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onEdit(selectedUnit)}>Editar peça</Button><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onAdjust(selectedUnit)} leftSection={<IconAdjustments size={16} />}>Entrada / ajuste</Button><Button size="sm" color="teal" disabled={!selectedUnit || Boolean(selectedUnit.conflict) || Number(selectedUnit.quantity) !== 1 || cart.items.some((item) => item.barcode === selectedUnit.barcode)} onClick={() => addCart(selectedUnit)} leftSection={<IconShoppingCart size={16} />}>Adicionar ao caixa</Button></Group></Group>
+      <Group justify="space-between" mt="md" className="inventory-actions"><Text size="sm" c="dimmed">{selectedUnit ? '1 peça selecionada' : 'Selecione uma peça no estoque'}</Text><Group gap="xs"><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onEdit(selectedUnit)}>Editar peça</Button><Button variant="default" size="sm" disabled={!selectedUnit} onClick={() => onAdjust(selectedUnit)} leftSection={<IconAdjustments size={16} />}>Entrada / ajuste</Button><Button size="sm" color="brand" disabled={!selectedUnit || Boolean(selectedUnit.conflict) || Number(selectedUnit.quantity) !== 1 || cart.items.some((item) => item.barcode === selectedUnit.barcode)} onClick={() => addCart(selectedUnit)} leftSection={<IconShoppingCart size={16} />}>Adicionar ao caixa</Button></Group></Group>
     </Paper>
   </>;
 }
 
 function InventoryRow({ unit, inCart, selected, onSelect }) {
-  const quantity = Number(unit.quantity || 0); const conflict = Boolean(unit.conflict); const state = conflict ? ['Em conflito', 'red'] : inCart ? ['No caixa', 'yellow'] : quantity !== 1 ? ['Sem saldo', 'gray'] : ['Disponível', 'teal'];
+  const quantity = Number(unit.quantity || 0); const conflict = Boolean(unit.conflict); const state = conflict ? ['Em conflito', 'red'] : inCart ? ['No caixa', 'yellow'] : quantity !== 1 ? ['Sem saldo', 'gray'] : ['Disponível', 'brand'];
   return <Table.Tr className={selected ? 'selected-row' : ''} onClick={onSelect}><Table.Td className="inventory-product-cell"><Group gap="sm" wrap="nowrap"><ProductPhotoPreview path={unit.photo_path} name={unit.name} size={44} /><Box><Text fw={600} className="inventory-product-name">{unit.name}</Text><Text size="xs" ff="monospace" className="inventory-inline-barcode">{unit.barcode}</Text></Box></Group></Table.Td><Table.Td className="inventory-barcode-column"><Text size="xs" ff="monospace">{unit.barcode}</Text></Table.Td><Table.Td className="inventory-variant-cell">{[unit.color, unit.size].filter(Boolean).join(' · ') || '—'}</Table.Td><Table.Td ta="right" className="inventory-price-cell">{money(unit.price)}</Table.Td><Table.Td><Badge color={state[1]} variant="light" className="inventory-state-badge">{state[0]}</Badge></Table.Td></Table.Tr>;
 }
 
@@ -457,7 +458,7 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
             </Box>
             {confirming ? <Alert mt="sm" color="yellow" title="Revisar venda e documento fiscal" icon={<IconReceipt size={18} />}>
               <Text size="sm">O estoque será baixado uma vez. A solicitação de {fiscalDocument === 'nfe' ? 'NF-e (modelo 55)' : 'NFC-e (modelo 65)'} ficará registrada; a nota só será considerada autorizada após o retorno da SEFAZ.</Text>
-              <Group justify="flex-end" mt="sm"><Button variant="default" onClick={() => setConfirming(false)}>Voltar</Button><Button color="teal" loading={busy === 'cart-confirm'} onClick={() => confirmCart(payment, fiscalDocument, () => setConfirming(false))}>Registrar e solicitar nota</Button></Group>
+              <Group justify="flex-end" mt="sm"><Button variant="default" onClick={() => setConfirming(false)}>Voltar</Button><Button color="brand" loading={busy === 'cart-confirm'} onClick={() => confirmCart(payment, fiscalDocument, () => setConfirming(false))}>Registrar e solicitar nota</Button></Group>
             </Alert> : <Button fullWidth className="pos-confirm-sale" leftSection={<IconReceipt size={18} />} disabled={!cart.items.length} onClick={() => setConfirming(true)}>Registrar venda e emitir nota</Button>}
             <Text className="pos-fiscal-notice">Confira os dados antes de concluir. A emissão fiscal está pendente de configuração{environmentMode === 'production' ? ' no SICNET' : ' no ambiente de teste'}.</Text>
           </Box>
@@ -466,9 +467,9 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
     </Box>
     <Drawer opened={manualSearchOpen} onClose={() => { setManualSearchOpen(false); setManualQuery(''); }} position="right" size="xl" title={<Box><Text size="xs" fw={800} lts=".08em" c="teal">BUSCA MANUAL</Text><Title order={3}>Produtos disponíveis no estoque</Title></Box>} className="stock-search-drawer">
       <TextInput aria-label="Pesquisar produto no estoque" size="md" placeholder="Busque por nome, código, marca, cor ou tamanho" leftSection={<IconSearch size={19} />} value={manualQuery} onChange={(event) => setManualQuery(event.currentTarget.value)} autoFocus />
-      <Group justify="space-between" mt="sm" mb="md"><Text size="sm" c="dimmed">Selecione uma peça para adicionar à comanda.</Text><Badge color="teal" variant="light">{manualMatches.length} resultados</Badge></Group>
+      <Group justify="space-between" mt="sm" mb="md"><Text size="sm" c="dimmed">Selecione uma peça para adicionar à comanda.</Text><Badge color="brand" variant="light">{manualMatches.length} resultados</Badge></Group>
       <ScrollArea className="manual-stock-results">
-        {manualMatches.length ? <Stack gap="sm">{manualMatches.map((unit) => <Paper key={unit.barcode} withBorder radius="md" p="md" className="pos-product-row"><Group justify="space-between" wrap="nowrap"><CheckoutProductPhoto unit={unit} /><Box className="pos-product-copy"><Text fw={700} lineClamp={1}>{unit.name}</Text><Text size="sm" c="dimmed">{[unit.brand, unit.category, unit.color, unit.size].filter(Boolean).join(' · ') || 'Sem variação informada'}</Text><Text size="xs" ff="monospace" c="dimmed">{unit.barcode}</Text></Box><Group gap="md" wrap="nowrap"><Text fw={800} className="pos-product-price">{money(unit.price)}</Text><Button variant="light" color="teal" leftSection={<IconPlus size={16} />} loading={busy === `cart-add-${unit.barcode}`} onClick={() => addManualProduct(unit)} aria-label={`Adicionar ${unit.name} ao caixa`}>Adicionar</Button></Group></Group></Paper>)}</Stack> : <EmptyState title={available.length ? 'Nenhum produto encontrado' : 'Nenhuma peça disponível'} text={available.length ? 'Tente buscar por outro nome ou código.' : 'As peças disponíveis aparecerão aqui para venda.'} icon={<IconSearch size={32} />} />}
+        {manualMatches.length ? <Stack gap="sm">{manualMatches.map((unit) => <Paper key={unit.barcode} withBorder radius="md" p="md" className="pos-product-row"><Group justify="space-between" wrap="nowrap"><CheckoutProductPhoto unit={unit} /><Box className="pos-product-copy"><Text fw={700} lineClamp={1}>{unit.name}</Text><Text size="sm" c="dimmed">{[unit.brand, unit.category, unit.color, unit.size].filter(Boolean).join(' · ') || 'Sem variação informada'}</Text><Text size="xs" ff="monospace" c="dimmed">{unit.barcode}</Text></Box><Group gap="md" wrap="nowrap"><Text fw={800} className="pos-product-price">{money(unit.price)}</Text><Button variant="light" color="brand" leftSection={<IconPlus size={16} />} loading={busy === `cart-add-${unit.barcode}`} onClick={() => addManualProduct(unit)} aria-label={`Adicionar ${unit.name} ao caixa`}>Adicionar</Button></Group></Group></Paper>)}</Stack> : <EmptyState title={available.length ? 'Nenhum produto encontrado' : 'Nenhuma peça disponível'} text={available.length ? 'Tente buscar por outro nome ou código.' : 'As peças disponíveis aparecerão aqui para venda.'} icon={<IconSearch size={32} />} />}
       </ScrollArea>
     </Drawer>
   </>;
@@ -497,11 +498,11 @@ function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmen
       </Stack>
       <SummaryCard draft={draft} variants={validVariants} pieces={pieces} />
     </Box>
-    <Paper withBorder radius={0} className="product-actions"><Text size="sm" c="dimmed">Confira as quantidades antes de cadastrar.</Text><Group><Button variant="default" disabled={busy || photoBusy} onClick={onCancel}>Cancelar</Button><Button color="teal" leftSection={<IconDeviceFloppy size={17} />} loading={busy} disabled={photoBusy} onClick={() => onSave(draft)}>{mode === 'edit' ? 'Salvar alterações' : 'Cadastrar produto'}</Button></Group></Paper>
+    <Paper withBorder radius={0} className="product-actions"><Text size="sm" c="dimmed">Confira as quantidades antes de cadastrar.</Text><Group><Button variant="default" disabled={busy || photoBusy} onClick={onCancel}>Cancelar</Button><Button color="brand" leftSection={<IconDeviceFloppy size={17} />} loading={busy} disabled={photoBusy} onClick={() => onSave(draft)}>{mode === 'edit' ? 'Salvar alterações' : 'Cadastrar produto'}</Button></Group></Paper>
   </Box>;
 }
 
-function SectionTitle({ number, title }) { return <Group gap="sm"><ThemeIcon color="teal" radius="xl" size={31}><Text fw={800}>{number}</Text></ThemeIcon><Title order={3}>{title}</Title></Group>; }
+function SectionTitle({ number, title }) { return <Group gap="sm"><ThemeIcon color="brand" radius="xl" size={31}><Text fw={800}>{number}</Text></ThemeIcon><Title order={3}>{title}</Title></Group>; }
 
 function MoneyInput({ label, value, onChange, required }) { return <TextInput label={label} required={required} leftSection={<Text size="sm" c="dimmed">R$</Text>} value={value} onChange={(event) => onChange(event.currentTarget.value)} />; }
 
@@ -510,7 +511,7 @@ function VariantTable({ variants, onChange, onRemove, readOnly }) {
 }
 
 function SummaryCard({ draft, variants, pieces }) {
-  const first = variants[0]; return <Paper withBorder radius="md" p="lg" className="summary-card"><Title order={3}>Resumo do cadastro</Title><Title order={2} mt="lg" className="summary-name">{draft.name.trim() || 'Produto novo'}</Title><Divider my="md" /><SummaryMetric label="Preço por peça" value={money(draft.price)} /><SummaryMetric label="Variações" value={integer.format(variants.length)} /><SummaryMetric label="Peças a cadastrar" value={integer.format(pieces)} bold /><Alert color="teal" variant="light" mt="lg" icon={<IconBarcode size={30} />}><Text size="sm" fw={700}>Cada peça recebe um código próprio.</Text><Text size="sm">Os códigos são gerados automaticamente ao cadastrar.</Text></Alert><LabelExample name={draft.name.trim() || 'Produto novo'} variant={first ? `${first.color} · ${first.size}` : 'Cor · Tamanho'} price={money(draft.price)} /></Paper>;
+  const first = variants[0]; return <Paper withBorder radius="md" p="lg" className="summary-card"><Title order={3}>Resumo do cadastro</Title><Title order={2} mt="lg" className="summary-name">{draft.name.trim() || 'Produto novo'}</Title><Divider my="md" /><SummaryMetric label="Preço por peça" value={money(draft.price)} /><SummaryMetric label="Variações" value={integer.format(variants.length)} /><SummaryMetric label="Peças a cadastrar" value={integer.format(pieces)} bold /><Alert color="brand" variant="light" mt="lg" icon={<IconBarcode size={30} />}><Text size="sm" fw={700}>Cada peça recebe um código próprio.</Text><Text size="sm">Os códigos são gerados automaticamente ao cadastrar.</Text></Alert><LabelExample name={draft.name.trim() || 'Produto novo'} variant={first ? `${first.color} · ${first.size}` : 'Cor · Tamanho'} price={money(draft.price)} /></Paper>;
 }
 
 function SummaryMetric({ label, value, bold }) { return <Group justify="space-between" py="sm" className="summary-metric"><Text c="dimmed">{label}</Text><Text fw={bold ? 800 : 500}>{value}</Text></Group>; }
@@ -574,7 +575,7 @@ function reportStatus(value) {
 
 function ReportBars({ title, rows }) {
   const maximum = Math.max(1, ...(rows || []).map((row) => reportNumber(row.revenue)));
-  return <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="md"><Title order={3}>{title}</Title><Text size="sm" c="dimmed">Por faturamento</Text></Group>{rows && rows.length ? <Stack gap="sm">{rows.slice(0, 8).map((row) => <Box key={row.label}><Group justify="space-between" mb={4}><Text size="sm" fw={600}>{row.label}</Text><Text size="sm" c="dimmed">{money(row.revenue)} · {integer.format(reportNumber(row.items))} itens</Text></Group><Progress value={(reportNumber(row.revenue) / maximum) * 100} color="teal" radius="xl" /></Box>)}</Stack> : <EmptyState title="Sem saídas no período" text="Os agrupamentos aparecerão quando houver vendas." icon={<IconChartBar size={32} />} />}</Paper>;
+  return <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="md"><Title order={3}>{title}</Title><Text size="sm" c="dimmed">Por faturamento</Text></Group>{rows && rows.length ? <Stack gap="sm">{rows.slice(0, 8).map((row) => <Box key={row.label}><Group justify="space-between" mb={4}><Text size="sm" fw={600}>{row.label}</Text><Text size="sm" c="dimmed">{money(row.revenue)} · {integer.format(reportNumber(row.items))} itens</Text></Group><Progress value={(reportNumber(row.revenue) / maximum) * 100} color="brand" radius="xl" /></Box>)}</Stack> : <EmptyState title="Sem saídas no período" text="Os agrupamentos aparecerão quando houver vendas." icon={<IconChartBar size={32} />} />}</Paper>;
 }
 
 function SalesDashboardPage() {
@@ -599,7 +600,7 @@ function SalesDashboardPage() {
     {state.loading && !state.report ? <Paper withBorder radius="md" p="xl"><Text c="dimmed">Carregando vendas e saídas…</Text></Paper> : <>
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} mb="md"><MetricCard label="Faturamento" value={money(report.summary.revenue)} /><MetricCard label="Vendas" value={integer.format(reportNumber(report.summary.sales))} /><MetricCard label="Peças que saíram" value={integer.format(reportNumber(report.summary.items))} /><MetricCard label="Ticket médio" value={money(report.summary.average_ticket)} /></SimpleGrid>
       <SimpleGrid cols={{ base: 1, lg: 2 }} mb="md"><ReportBars title="Saída por tipo de peça" rows={report.by_category} /><ReportBars title="Saída por marca" rows={report.by_brand} /></SimpleGrid>
-      <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="md"><Box><Title order={3}>Detalhamento das saídas</Title><Text size="sm" c="dimmed">{integer.format((report.rows || []).length)} linhas no período selecionado</Text></Box><Badge color="teal" variant="light">Estoque rastreável</Badge></Group>{report.rows && report.rows.length ? <ScrollArea><Table highlightOnHover><Table.Thead><Table.Tr><Table.Th>DATA</Table.Th><Table.Th>PRODUTO</Table.Th><Table.Th>MARCA / TIPO</Table.Th><Table.Th>QTD.</Table.Th><Table.Th ta="right">TOTAL</Table.Th><Table.Th>PAGAMENTO</Table.Th><Table.Th>FISCAL</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{report.rows.map((row, index) => <Table.Tr key={`${row.sale_id}-${row.barcode || index}`}><Table.Td>{historyDate(row.created_at)}</Table.Td><Table.Td><Text fw={600}>{row.name || 'Produto'}</Text><Text size="xs" c="dimmed" ff="monospace">{row.barcode || row.internal_code || '—'}</Text></Table.Td><Table.Td>{[row.brand, row.category].filter(Boolean).join(' · ') || 'Sem classificação'}</Table.Td><Table.Td>{integer.format(reportNumber(row.quantity))}</Table.Td><Table.Td ta="right">{money(row.line_total)}</Table.Td><Table.Td>{valueText(row.payment).toUpperCase()}</Table.Td><Table.Td><Badge color={row.fiscal_status === 'authorized' ? 'teal' : 'yellow'} variant="light">{reportStatus(row.fiscal_status)}</Badge></Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea> : <EmptyState title="Nenhuma saída encontrada" text="Altere o período ou os filtros para consultar outras vendas." icon={<IconChartBar size={32} />} />}</Paper>
+      <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="md"><Box><Title order={3}>Detalhamento das saídas</Title><Text size="sm" c="dimmed">{integer.format((report.rows || []).length)} linhas no período selecionado</Text></Box><Badge color="brand" variant="light">Estoque rastreável</Badge></Group>{report.rows && report.rows.length ? <ScrollArea><Table highlightOnHover><Table.Thead><Table.Tr><Table.Th>DATA</Table.Th><Table.Th>PRODUTO</Table.Th><Table.Th>MARCA / TIPO</Table.Th><Table.Th>QTD.</Table.Th><Table.Th ta="right">TOTAL</Table.Th><Table.Th>PAGAMENTO</Table.Th><Table.Th>FISCAL</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{report.rows.map((row, index) => <Table.Tr key={`${row.sale_id}-${row.barcode || index}`}><Table.Td>{historyDate(row.created_at)}</Table.Td><Table.Td><Text fw={600}>{row.name || 'Produto'}</Text><Text size="xs" c="dimmed" ff="monospace">{row.barcode || row.internal_code || '—'}</Text></Table.Td><Table.Td>{[row.brand, row.category].filter(Boolean).join(' · ') || 'Sem classificação'}</Table.Td><Table.Td>{integer.format(reportNumber(row.quantity))}</Table.Td><Table.Td ta="right">{money(row.line_total)}</Table.Td><Table.Td>{valueText(row.payment).toUpperCase()}</Table.Td><Table.Td><Badge color={row.fiscal_status === 'authorized' ? 'brand' : 'yellow'} variant="light">{reportStatus(row.fiscal_status)}</Badge></Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea> : <EmptyState title="Nenhuma saída encontrada" text="Altere o período ou os filtros para consultar outras vendas." icon={<IconChartBar size={32} />} />}</Paper>
     </>}
   </>;
 }
@@ -620,7 +621,7 @@ function LabelsPage() {
   const load = () => { setState((current) => ({ ...current, loading: true, error: null })); callHost('labels.preview', {}).then((data) => setState({ loading: false, html: data && data.html ? data.html : '', error: null })).catch((error) => setState({ loading: false, html: '', error })); };
   useEffect(() => { load(); }, []);
   const exportLabels = () => callHost('labels.export', {}).catch((error) => setState((current) => ({ ...current, error })));
-  return <><PageHeading title="Etiquetas" description="Confira as etiquetas individuais antes de exportar." action={<Button color="teal" leftSection={<IconFileExport size={17} />} onClick={exportLabels}>Exportar etiquetas</Button>} /><Paper withBorder radius="md" p="lg" className="labels-preview">{state.loading ? <Text c="dimmed">Carregando prévia…</Text> : state.error ? <Alert color="red" title="Não foi possível carregar as etiquetas"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.html ? <iframe title="Prévia das etiquetas" srcDoc={state.html} sandbox="" /> : <EmptyState title="Nenhuma etiqueta disponível" text="Cadastre peças com saldo disponível para gerar a prévia." icon={<IconTag size={32} />} />}</Paper></>;
+  return <><PageHeading title="Etiquetas" description="Confira as etiquetas individuais antes de exportar." action={<Button color="brand" leftSection={<IconFileExport size={17} />} onClick={exportLabels}>Exportar etiquetas</Button>} /><Paper withBorder radius="md" p="lg" className="labels-preview">{state.loading ? <Text c="dimmed">Carregando prévia…</Text> : state.error ? <Alert color="red" title="Não foi possível carregar as etiquetas"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.html ? <iframe title="Prévia das etiquetas" srcDoc={state.html} sandbox="" /> : <EmptyState title="Nenhuma etiqueta disponível" text="Cadastre peças com saldo disponível para gerar a prévia." icon={<IconTag size={32} />} />}</Paper></>;
 }
 
 function SettingsPage() {
@@ -633,7 +634,7 @@ function SettingsPage() {
   const info = state.info;
   const syncStatus = valueText(info && info.sync_state);
   const status = info && info.sync_configured
-    ? syncStatus === 'up_to_date' ? { label: 'Loja sincronizada', color: 'teal' }
+    ? syncStatus === 'up_to_date' ? { label: 'Loja sincronizada', color: 'brand' }
       : syncStatus === 'conflict' ? { label: 'Conflito para conferir', color: 'red' }
         : { label: 'Sincronização pendente', color: 'yellow' }
     : { label: 'Aguardando configuração', color: 'gray' };
@@ -687,12 +688,12 @@ function EditDrawer({ unit, onClose, onSave, busy }) {
       <Textarea label="Observações" value={draft.notes} onChange={(event) => update('notes', event.currentTarget.value)} />
       <Text fw={700}>Dados fiscais</Text>
       <SimpleGrid cols={2}>{[...fiscalTextKeys, ...fiscalNumberKeys].map((key) => <TextInput key={key} label={fiscalLabels[key]} value={valueText(draft.fiscal[key])} onChange={(event) => updateFiscal(key, event.currentTarget.value)} />)}</SimpleGrid>
-      <Button color="teal" loading={busy} disabled={photoBusy} onClick={submit}>Salvar alterações</Button>
+      <Button color="brand" loading={busy} disabled={photoBusy} onClick={submit}>Salvar alterações</Button>
     </Stack>
   </Modal>;
 }
 
-function AdjustDrawer({ unit, onClose, onSave, busy }) { const [quantity, setQuantity] = useState(1); const [reason, setReason] = useState(''); useEffect(() => { setQuantity(1); setReason(''); }, [unit]); return <Modal opened={Boolean(unit)} onClose={onClose} title="Entrada / ajuste" centered size={480} radius="md" padding="lg" classNames={{ content: 'stock-modal stock-adjust-modal', header: 'stock-modal-header', body: 'stock-modal-body' }}><Stack><Text c="dimmed">Atualize a disponibilidade de <strong>{unit && unit.name}</strong>.</Text><Select label="Novo saldo" value={String(quantity)} onChange={(value) => setQuantity(Number(value))} data={[{ value: '0', label: 'Indisponível (saldo 0)' }, { value: '1', label: 'Disponível (saldo 1)' }]} /><Textarea label="Motivo do ajuste (obrigatório)" required value={reason} onChange={(event) => setReason(event.currentTarget.value)} /><Button color="teal" loading={busy} disabled={!reason.trim()} onClick={() => onSave(quantity, reason)}>Registrar ajuste</Button></Stack></Modal>; }
+function AdjustDrawer({ unit, onClose, onSave, busy }) { const [quantity, setQuantity] = useState(1); const [reason, setReason] = useState(''); useEffect(() => { setQuantity(1); setReason(''); }, [unit]); return <Modal opened={Boolean(unit)} onClose={onClose} title="Entrada / ajuste" centered size={480} radius="md" padding="lg" classNames={{ content: 'stock-modal stock-adjust-modal', header: 'stock-modal-header', body: 'stock-modal-body' }}><Stack><Text c="dimmed">Atualize a disponibilidade de <strong>{unit && unit.name}</strong>.</Text><Select label="Novo saldo" value={String(quantity)} onChange={(value) => setQuantity(Number(value))} data={[{ value: '0', label: 'Indisponível (saldo 0)' }, { value: '1', label: 'Disponível (saldo 1)' }]} /><Textarea label="Motivo do ajuste (obrigatório)" required value={reason} onChange={(event) => setReason(event.currentTarget.value)} /><Button color="brand" loading={busy} disabled={!reason.trim()} onClick={() => onSave(quantity, reason)}>Registrar ajuste</Button></Stack></Modal>; }
 
 function EmptyState({ title, text, icon }) { return <Stack align="center" justify="center" gap="xs" py="xl" c="dimmed">{icon || <IconArchive size={32} />}<Text fw={700}>{title}</Text><Text size="sm" ta="center">{text}</Text></Stack>; }
 

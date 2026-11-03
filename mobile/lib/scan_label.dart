@@ -127,7 +127,7 @@ class _ScanPageState extends State<ScanPage> {
                       margin: const EdgeInsets.symmetric(horizontal: 24),
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: const Color(0xFF6EE7CA),
+                          color: const Color(0xFFFFFFFF),
                           width: 3,
                         ),
                         borderRadius: BorderRadius.circular(16),

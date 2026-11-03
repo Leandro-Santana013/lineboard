@@ -42,7 +42,7 @@ namespace Lineboard {
    uiRoot=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui");
    if(!Directory.Exists(uiRoot)||!File.Exists(Path.Combine(uiRoot,"index.html")))throw new DomainError("UI_ASSETS_MISSING");
    sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);
-   Text="Lineboard • Loja e estoque • Laboratório";StartPosition=FormStartPosition.CenterScreen;ClientSize=new Size(1224,794);MinimumSize=new Size(1180,740);if(largeCapture)ClientSize=new Size(1400,960);
+   Text="Lineboard • Loja e estoque • Laboratório";Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);StartPosition=FormStartPosition.CenterScreen;ClientSize=new Size(1224,794);MinimumSize=new Size(1180,740);if(largeCapture)ClientSize=new Size(1400,960);
    if(preview){ShowInTaskbar=false;WindowState=FormWindowState.Normal;}
    Controls.Add(webView);
    Shown+=OnShown;FormClosed+=OnClosed;
@@ -126,7 +126,7 @@ namespace Lineboard {
   async Task WaitForPreviewReadyAsync() {
    for(var attempt=0;attempt<75;attempt++) {
     if(bridge!=null&&bridge.BootstrapServed) {
-     var result=await webView.CoreWebView2.ExecuteScriptAsync("(function(){var text=(document.body&&document.body.innerText)||'';return document.readyState==='complete' && document.body && document.body.children.length>0 && text.indexOf('Loja e estoque')>=0;})()");
+     var result=await webView.CoreWebView2.ExecuteScriptAsync("(function(){var logo=document.querySelector('.brand-logo');return document.readyState==='complete' && !!document.querySelector('.inventory-card') && !!logo && logo.complete && logo.naturalWidth>0;})()");
      if(String.Equals(result,"true",StringComparison.OrdinalIgnoreCase))return;
     }
     await Task.Delay(200);

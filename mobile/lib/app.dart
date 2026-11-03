@@ -3,14 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'brand.dart';
+export 'brand.dart' show ink, accent;
+
 import 'domain.dart';
 import 'repository.dart';
 import 'scan_label.dart';
 import 'product_form.dart';
 import 'sale_page.dart';
-
-const ink = Color(0xFF122C38);
-const sea = Color(0xFF007F79);
 
 class LineboardApp extends StatelessWidget {
   const LineboardApp({super.key, this.repository});
@@ -19,24 +19,7 @@ class LineboardApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Lineboard',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: sea),
-      scaffoldBackgroundColor: const Color(0xFFF5F7F4),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFFF5F7F4),
-        foregroundColor: ink,
-        centerTitle: false,
-      ),
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-        filled: true,
-        fillColor: Colors.white,
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(minimumSize: const Size(0, 52)),
-      ),
-    ),
+    theme: lineboardTheme(),
     home: repository == null ? const SetupPage() : SessionGate(repository!),
   );
 }
@@ -54,7 +37,7 @@ class SetupPage extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.waves, color: sea, size: 64),
+              StoreLogo(size: 120),
               SizedBox(height: 24),
               Text(
                 'Lineboard',
@@ -189,7 +172,7 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 const Align(
                   alignment: Alignment.centerLeft,
-                  child: Icon(Icons.waves, size: 56, color: sea),
+                  child: StoreLogo(size: 132),
                 ),
                 const SizedBox(height: 24),
                 const Text(
@@ -413,10 +396,7 @@ class _HomePageState extends State<HomePage> {
     final lastSync = widget.repo.syncTime(org)?.toLocal();
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'LINEBOARD',
-          style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w800),
-        ),
+        title: const StoreAppBarTitle(),
         actions: [
           if (widget.member['role'] == 'admin')
             IconButton(
@@ -436,7 +416,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           Text(
             widget.member['organizations']['name'],
-            style: const TextStyle(color: sea, fontWeight: FontWeight.w600),
+            style: const TextStyle(color: accent, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           const Text(
@@ -455,7 +435,7 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 28),
           if (pendingSale != null)
             Card(
-              color: const Color(0xFFFFEBC6),
+              color: const Color(0xFFEBEBEB),
               child: ListTile(
                 title: const Text('Saída aguardando confirmação'),
                 subtitle: const Text(
@@ -467,7 +447,7 @@ class _HomePageState extends State<HomePage> {
             ),
           if (pendingProduct != null)
             Card(
-              color: const Color(0xFFFFEBC6),
+              color: const Color(0xFFEBEBEB),
               child: ListTile(
                 title: const Text('Cadastro aguardando confirmação'),
                 subtitle: Text(pendingProduct['product']['name']),
@@ -497,7 +477,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 20),
           if (status != null)
-            Text(status!, style: const TextStyle(color: Color(0xFF886000))),
+            Text(status!, style: const TextStyle(color: Color(0xFF626262))),
           Text(
             lastSync == null
                 ? 'Nenhuma ficha salva para uso offline.'
@@ -547,7 +527,7 @@ class ActionCard extends StatelessWidget {
             Icon(
               icon,
               size: 32,
-              color: primary ? const Color(0xFF6EE7CA) : sea,
+              color: primary ? const Color(0xFFFFFFFF) : accent,
             ),
             const SizedBox(width: 18),
             Expanded(

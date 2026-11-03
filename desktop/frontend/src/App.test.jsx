@@ -2,6 +2,7 @@ import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.jsx';
+import { theme } from './theme.js';
 import { clearBridgeMock, setBridgeMock } from './bridge.js';
 import './styles.css';
 
@@ -17,7 +18,7 @@ function bootstrap() {
 }
 
 function renderApp() {
-  return render(<MantineProvider defaultColorScheme="light"><App /></MantineProvider>);
+  return render(<MantineProvider theme={theme} defaultColorScheme="light"><App /></MantineProvider>);
 }
 
 describe('Lineboard frontend', () => {

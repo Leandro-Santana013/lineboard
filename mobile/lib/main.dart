@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'brand.dart';
 import 'repository.dart';
 import 'pending_store.dart';
 import 'local_app.dart';
@@ -19,8 +20,9 @@ Future<void> main() async {
       runApp(LocalLineboardApp(gateway));
     } catch (_) {
       runApp(
-        const MaterialApp(
-          home: Scaffold(
+        MaterialApp(
+          theme: lineboardTheme(),
+          home: const Scaffold(
             body: SafeArea(
               child: Padding(
                 padding: EdgeInsets.all(24),

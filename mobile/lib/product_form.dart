@@ -197,7 +197,7 @@ class _ProductFormState extends State<ProductForm> {
         body: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            const Icon(Icons.check_circle, size: 56, color: sea),
+            const Icon(Icons.check_circle, size: 56, color: accent),
             const SizedBox(height: 16),
             const Text(
               'Salvo na sua loja.',
@@ -230,7 +230,7 @@ class _ProductFormState extends State<ProductForm> {
         body: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            const Icon(Icons.cloud_sync_outlined, size: 56, color: sea),
+            const Icon(Icons.cloud_sync_outlined, size: 56, color: accent),
             const SizedBox(height: 24),
             Text(
               pending!['product']['name'],

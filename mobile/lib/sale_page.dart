@@ -290,7 +290,7 @@ class _SalePageState extends State<SalePage> {
                 child: Text('Nenhuma peça no carrinho da loja.'),
               ),
             if (sharedMessage != null)
-              Text(sharedMessage!, style: const TextStyle(color: sea)),
+              Text(sharedMessage!, style: const TextStyle(color: accent)),
             if (error != null)
               Text(error!, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 20),
@@ -318,7 +318,7 @@ class _SalePageState extends State<SalePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 32),
-              const Icon(Icons.check_circle, size: 72, color: sea),
+              const Icon(Icons.check_circle, size: 72, color: accent),
               const SizedBox(height: 24),
               const Text(
                 'Venda confirmada.',
@@ -365,7 +365,7 @@ class _SalePageState extends State<SalePage> {
           const SizedBox(height: 24),
           if (pending != null) ...[
             const Card(
-              color: Color(0xFFFFEBC6),
+              color: Color(0xFFEBEBEB),
               child: Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(

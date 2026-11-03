@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app.dart' show sea, ink;
+import 'brand.dart';
 import 'local_gateway.dart';
 import 'local_product_form.dart';
 import 'scan_label.dart';
@@ -17,14 +17,7 @@ class _LocalLineboardAppState extends State<LocalLineboardApp> {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Lineboard',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: sea),
-      scaffoldBackgroundColor: const Color(0xFFF5F7F4),
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-      ),
-    ),
+    theme: lineboardTheme(),
     home: widget.gateway.paired
         ? LocalHome(widget.gateway, onUnpaired: () => setState(() {}))
         : PairDesktopPage(widget.gateway, onPaired: () => setState(() {})),
@@ -81,7 +74,10 @@ class _PairDesktopPageState extends State<PairDesktopPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.storefront, size: 64, color: sea),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: StoreLogo(size: 120),
+              ),
               const SizedBox(height: 24),
               const Text(
                 'Conecte seu celular ao caixa',
@@ -229,7 +225,7 @@ class _LocalHomeState extends State<LocalHome> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Lineboard • loja'),
+      title: const StoreAppBarTitle(),
       actions: [
         IconButton(
           tooltip: 'Desconectar deste caixa',

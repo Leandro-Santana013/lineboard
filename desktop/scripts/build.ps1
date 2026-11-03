@@ -51,7 +51,8 @@ $coreAssembly = Join-Path $packageRoot 'lib\net462\Microsoft.Web.WebView2.Core.d
 $winFormsAssembly = Join-Path $packageRoot 'lib\net462\Microsoft.Web.WebView2.WinForms.dll'
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $desktopRoot 'src') -Filter '*.cs' | ForEach-Object FullName)
 $executable = Join-Path $bundle 'Lineboard.exe'
-$arguments = @('/nologo','/utf8output','/optimize+','/platform:x64','/target:winexe',('/out:' + $executable),'/reference:System.Data.dll','/reference:System.Web.Extensions.dll','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.Security.dll',('/reference:' + $coreAssembly),('/reference:' + $winFormsAssembly)) + $sources
+$brandAssets = Join-Path $desktopRoot 'assets'
+$arguments = @('/nologo','/utf8output','/optimize+','/platform:x64','/target:winexe',('/out:' + $executable),('/win32icon:' + (Join-Path $brandAssets 'lines-boardshop.ico')),('/resource:' + (Join-Path $brandAssets 'lines-boardshop.jpg') + ',Lineboard.StoreLogo'),'/reference:System.Data.dll','/reference:System.Web.Extensions.dll','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.Security.dll',('/reference:' + $coreAssembly),('/reference:' + $winFormsAssembly)) + $sources
 & $compiler @arguments
 if ($LASTEXITCODE -ne 0) { throw 'Native compilation failed. The installed bundle was not changed.' }
 Copy-Item -LiteralPath (Join-Path $desktopRoot 'schema.sql') -Destination (Join-Path $bundle 'schema.sql') -Force
