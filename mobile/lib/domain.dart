@@ -71,6 +71,9 @@ String encodeJson(Object value) => jsonEncode(value);
 String friendlyError(Object error) {
   final message = error.toString();
   const translations = {
+    'INVALID_PHOTO_TYPE': 'Escolha uma foto JPG/JPEG, PNG ou WebP válida.',
+    'INVALID_PHOTO': 'Imagem inválida. Escolha a foto novamente.',
+    'PHOTO_TOO_LARGE': 'A foto deve ter no máximo 5 MB.',
     'otp_disabled': 'OTP desativado no Supabase. Ative o provedor de e-mail ou use a ativacao do aparelho.',
     'email_provider_disabled': 'Provedor de e-mail desativado no Supabase. Ative-o antes de solicitar um codigo.',
     'Signups not allowed for otp': 'OTP desativado no Supabase. Ative o provedor de e-mail ou use a ativacao do aparelho.',

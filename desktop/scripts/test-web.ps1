@@ -2,9 +2,6 @@ param([string]$Server = '(localdb)\MSSQLLocalDB')
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $desktopRoot = Join-Path $workspace 'desktop'
-if (-not (Test-Path -LiteralPath (Join-Path $desktopRoot 'bin\ui\index.html'))) {
-    throw 'Frontend assets are missing from desktop/bin/ui. Run npm run build in desktop/frontend first.'
-}
 & (Join-Path $PSScriptRoot 'build.ps1')
 $database = 'LINEBOARD_LAB_WEB' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
 & (Join-Path $PSScriptRoot 'New-SicSandbox.ps1') -Server $Server -Database $database -Empty

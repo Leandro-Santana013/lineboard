@@ -65,6 +65,9 @@ button, input, textarea { font-family: inherit; }
 .pos-cart-item:last-child { border-bottom: 0; }
 .pos-item-avatar { display: grid; place-items: center; width: 50px; height: 56px; border: 1px solid #dae7e6; border-radius: 12px; background: linear-gradient(135deg, #eff6f5, #e2eceb); color: #5f7979; font-size: 12px; font-weight: 800; }
 .pos-item-copy { min-width: 0; }
+.pos-item-avatar { overflow: hidden; flex-shrink: 0; }
+.pos-item-avatar > div { width: 100% !important; min-width: 0 !important; height: 100%; display: grid; place-items: center; }
+.pos-item-avatar img { display: block; width: 100%; height: 100%; }
 .pos-item-name { color: var(--pos-ink); font-size: 16px; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; }
 .pos-item-details { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .pos-item-variant { padding: 3px 7px; border-radius: 5px; background: #f2f4f5; color: #657481; font-size: 11px; font-weight: 600; }

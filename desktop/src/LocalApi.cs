@@ -19,8 +19,8 @@ namespace Lineboard {
   static string Secret(){var bytes=new byte[32];using(var rng=RandomNumberGenerator.Create())rng.GetBytes(bytes);return BitConverter.ToString(bytes).Replace("-","").ToLowerInvariant();}
   public string OpenPairing(){lock(pairingLock){var bytes=new byte[4];using(var rng=RandomNumberGenerator.Create())rng.GetBytes(bytes);pin=(BitConverter.ToUInt32(bytes,0)%1000000).ToString("D6");pinExpires=DateTime.UtcNow.AddMinutes(3);attempts=0;return pin;}}
   public void Start(){listener.Start();Task.Run(async()=>{while(listener.IsListening){try{var context=await listener.GetContextAsync();ThreadPool.QueueUserWorkItem(_=>Handle(context));}catch(HttpListenerException){break;}catch(ObjectDisposedException){break;}}});}
-  static string Body(HttpListenerRequest request){
-   const int maximum=1024*1024;if(request.ContentLength64>maximum)throw new DomainError("REQUEST_TOO_LARGE");
+  static string Body(HttpListenerRequest request,int maximum=1024*1024){
+   if(request.ContentLength64>maximum)throw new DomainError("REQUEST_TOO_LARGE");
    using(var stream=request.InputStream)using(var output=new MemoryStream()){
     var buffer=new byte[8192];int n;while((n=stream.Read(buffer,0,buffer.Length))>0){if(output.Length+n>maximum)throw new DomainError("REQUEST_TOO_LARGE");output.Write(buffer,0,n);}return Encoding.UTF8.GetString(output.ToArray());
    }
@@ -40,6 +40,13 @@ namespace Lineboard {
     else{
      var auth=request.Headers["Authorization"]??"";if(!auth.StartsWith("Bearer ",StringComparison.Ordinal)||!store.Authorized(auth.Substring(7)))throw new DomainError("UNAUTHORIZED");
      if(path=="/api/catalog"&&method=="GET")result=new{items=store.Catalog()};
+     else if(path=="/api/photos"&&method=="POST"){
+      var photo=Json.Read<Dictionary<string,string>>(Body(request,8*1024*1024));if(photo==null||photo.Count!=2||!photo.ContainsKey("content_type")||!photo.ContainsKey("data"))throw new DomainError("INVALID_PAYLOAD");
+      result=new CloudSync(store,false).UploadPhoto(photo["content_type"],photo["data"]);
+     }
+     else if(path=="/api/photos/url"&&method=="POST"){
+      var photo=Json.Read<Dictionary<string,string>>(Body(request));if(photo==null||photo.Count!=1||!photo.ContainsKey("photo_path"))throw new DomainError("INVALID_PAYLOAD");result=new CloudSync(store,false).PhotoUrl(photo["photo_path"]);
+     }
      else if(path.StartsWith("/api/units/",StringComparison.Ordinal)&&method=="GET")result=store.Lookup(Uri.UnescapeDataString(path.Substring(11)));
      else if(path.StartsWith("/api/units/",StringComparison.Ordinal)&&method=="PUT")result=store.Edit(Uri.UnescapeDataString(path.Substring(11)),Json.Read<EditDraft>(Body(request)));
      else if(path=="/api/products"&&method=="POST")result=store.CreateProduct(Json.Read<ProductDraft>(Body(request)));

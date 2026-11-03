@@ -8,8 +8,8 @@ namespace Lineboard {
  public sealed class CloudSync {
   readonly SicStore store;readonly Func<Dictionary<string,object>,Dictionary<string,object>> send;readonly Func<Dictionary<string,object>> pull;readonly object gate=new object();
   public readonly bool Configured;
-  public CloudSync(SicStore store):this(store,CreateSender(),CreatePuller(store)){
-   if(Configured){store.PrepareCheckout=()=>Reconcile();store.ClaimCheckout=(request,items)=>{var result=send(new Dictionary<string,object>{{"kind","checkout.claim"},{"instance_id",store.InstanceId},{"request_id",request},{"items",items}});if(Convert.ToString(result["state"])!="claimed")throw new DomainError("CHECKOUT_FAILED");};store.ReleaseCheckout=request=>send(new Dictionary<string,object>{{"kind","checkout.release"},{"instance_id",store.InstanceId},{"request_id",request}});}
+  public CloudSync(SicStore store,bool configureCheckout=true):this(store,CreateSender(),CreatePuller(store)){
+   if(Configured&&configureCheckout){store.PrepareCheckout=()=>Reconcile();store.ClaimCheckout=(request,items)=>{var result=send(new Dictionary<string,object>{{"kind","checkout.claim"},{"instance_id",store.InstanceId},{"request_id",request},{"items",items}});if(Convert.ToString(result["state"])!="claimed")throw new DomainError("CHECKOUT_FAILED");};store.ReleaseCheckout=request=>send(new Dictionary<string,object>{{"kind","checkout.release"},{"instance_id",store.InstanceId},{"request_id",request}});}
   }
   internal CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender){this.store=store;send=sender;pull=null;Configured=sender!=null;}
   CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender,Func<Dictionary<string,object>> receiver){this.store=store;send=sender;pull=receiver;Configured=sender!=null;}
@@ -24,7 +24,7 @@ namespace Lineboard {
     var request=(HttpWebRequest)WebRequest.Create(uri);request.Method="POST";request.AllowAutoRedirect=false;request.Timeout=15000;request.ContentType="application/json";request.Headers["Authorization"]="Bearer "+token;
     var bytes=Encoding.UTF8.GetBytes(Json.Write(payload));request.ContentLength=bytes.Length;using(var stream=request.GetRequestStream())stream.Write(bytes,0,bytes.Length);
     try{using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream()))return Json.Read<Dictionary<string,object>>(reader.ReadToEnd());}
-     catch(WebException error){var code="CLOUD_NOT_ACKNOWLEDGED";if(error.Response!=null){using(var response=error.Response)using(var reader=new StreamReader(response.GetResponseStream())){try{var body=Json.Read<Dictionary<string,object>>(reader.ReadToEnd());var value=Convert.ToString(body["error"]);if(value=="CHECKOUT_IN_PROGRESS"||value=="CART_CHANGED"||value=="CLOUD_STOCK_CONFLICT"||value=="INSUFFICIENT_STOCK"||value=="CHECKOUT_CLAIM_REQUIRED")code=value;}catch{}}}throw new DomainError(code);}
+     catch(WebException error){var code="CLOUD_NOT_ACKNOWLEDGED";if(error.Response!=null){using(var response=error.Response)using(var reader=new StreamReader(response.GetResponseStream())){try{var body=Json.Read<Dictionary<string,object>>(reader.ReadToEnd());var value=Convert.ToString(body["error"]);if(value=="CHECKOUT_IN_PROGRESS"||value=="CART_CHANGED"||value=="CLOUD_STOCK_CONFLICT"||value=="INSUFFICIENT_STOCK"||value=="CHECKOUT_CLAIM_REQUIRED"||value=="INVALID_PHOTO"||value=="PHOTO_TOO_LARGE"||value=="INVALID_PHOTO_TYPE"||value=="PHOTO_UPLOAD_FAILED")code=value;}catch{}}}throw new DomainError(code);}
    };
   }
   static Func<Dictionary<string,object>> CreatePuller(SicStore store){
@@ -39,6 +39,15 @@ namespace Lineboard {
     try{using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream()))return Json.Read<Dictionary<string,object>>(reader.ReadToEnd());}
     catch(WebException error){if(error.Response!=null)error.Response.Dispose();throw new DomainError("CLOUD_NOT_ACKNOWLEDGED");}
    };
+  }
+  public Dictionary<string,object> UploadPhoto(string type,string data){
+   ProductPhotos.Validate(type,data);if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");
+   var result=send(new Dictionary<string,object>{{"kind","photo.upload"},{"content_type",type},{"data",data}});
+   object path;if(!result.TryGetValue("photo_path",out path))throw new DomainError("INVALID_PHOTO");ProductPhotos.Path(Convert.ToString(path));return result;
+  }
+  public Dictionary<string,object> PhotoUrl(string path){
+   ProductPhotos.Path(path);if(!Configured)throw new DomainError("CLOUD_NOT_CONFIGURED");
+   return send(new Dictionary<string,object>{{"kind","photo.url"},{"photo_path",path}});
   }
   Dictionary<string,object> PullSnapshot(){var snapshot=pull();if(!snapshot.ContainsKey("state")||Convert.ToString(snapshot["state"])!="snapshot"||!String.Equals(Convert.ToString(snapshot["instance_id"]),store.InstanceId,StringComparison.OrdinalIgnoreCase))throw new DomainError("INVALID_CLOUD_SNAPSHOT");return snapshot;}
   public Dictionary<string,object> Reconcile(){lock(gate){

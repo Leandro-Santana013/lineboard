@@ -9,7 +9,7 @@ using System.Web.Script.Serialization;
 
 namespace Lineboard {
  public static class Json {
-  public static JavaScriptSerializer Serializer() { return new JavaScriptSerializer { MaxJsonLength=4*1024*1024, RecursionLimit=64 }; }
+  public static JavaScriptSerializer Serializer() { return new JavaScriptSerializer { MaxJsonLength=8*1024*1024, RecursionLimit=64 }; }
   public static string Write(object value) { return Serializer().Serialize(value); }
   public static T Read<T>(string value) { return Serializer().Deserialize<T>(value); }
   public static string Hash(string value) { using(var sha=SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(value))).Replace("-","").ToLowerInvariant(); }

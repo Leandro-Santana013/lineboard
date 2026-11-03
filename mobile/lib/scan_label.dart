@@ -10,6 +10,7 @@ import 'app.dart';
 import 'domain.dart';
 import 'repository.dart';
 import 'product_edit.dart';
+import 'local_gateway.dart';
 
 class ScanPage extends StatefulWidget {
   const ScanPage({super.key});
@@ -62,8 +63,7 @@ class _ScanPageState extends State<ScanPage> {
     lastInvalidFeedback = now;
     if (mounted) {
       setState(
-        () => guidance =
-            'Código visto, mas não é uma etiqueta Lineboard. Centralize o código inteiro.',
+        () => guidance = 'Código visto, mas não é uma etiqueta Lineboard. Centralize o código inteiro.',
       );
     }
   }
@@ -200,9 +200,16 @@ BarcodeSelection selectBarcode(Iterable<String?> values) {
 }
 
 class LabelPage extends StatefulWidget {
-  const LabelPage(this.item, {super.key, this.repo, this.offline = false});
+  const LabelPage(
+    this.item, {
+    super.key,
+    this.repo,
+    this.gateway,
+    this.offline = false,
+  });
   final CatalogItem item;
   final Repository? repo;
+  final LocalGateway? gateway;
   final bool offline;
   @override
   State<LabelPage> createState() => _LabelPageState();
@@ -215,12 +222,16 @@ class _LabelPageState extends State<LabelPage> {
   CatalogItem? updatedItem;
   CatalogItem get item => updatedItem ?? widget.item;
   Future<void> edit() async {
-    final fields = await showDialog<Map<String, String>>(
+    final fields = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => ProductEditDialog(item, widget.repo!),
     );
     if (fields != null && mounted) {
-      setState(() => updatedItem = CatalogItem({...item.data, ...fields}));
+      setState(() {
+        updatedItem = CatalogItem({...item.data, ...fields});
+        photoUrl = null;
+      });
+      await loadPhoto();
     }
   }
 
@@ -232,11 +243,16 @@ class _LabelPageState extends State<LabelPage> {
 
   Future<void> loadPhoto() async {
     final path = item.data['photo_path'];
-    if (widget.offline || path == null || widget.repo == null) return;
+    if (widget.offline ||
+        path == null ||
+        path == '' ||
+        (widget.repo == null && widget.gateway == null)) {
+      return;
+    }
     try {
-      final url = await widget.repo!.client.storage
-          .from('product-photos')
-          .createSignedUrl(path, 300);
+      final url = widget.repo != null
+          ? await widget.repo!.photoUrl(path)
+          : await widget.gateway!.photoUrl(path);
       if (mounted) setState(() => photoUrl = url);
     } catch (_) {
       /* Optional photo must not prevent label use. */

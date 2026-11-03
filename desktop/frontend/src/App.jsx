@@ -58,6 +58,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { callHost, hasDesktopHost, requestId } from './bridge';
+import { ProductPhotoField, ProductPhotoPreview } from './ProductPhoto.jsx';
 
 const pt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const integer = new Intl.NumberFormat('pt-BR');
@@ -326,7 +327,12 @@ function InventoryPage({ catalog, cart, selected, setSelected, addCart, onEdit, 
 
 function InventoryRow({ unit, inCart, selected, onSelect }) {
   const quantity = Number(unit.quantity || 0); const conflict = Boolean(unit.conflict); const state = conflict ? ['Em conflito', 'red'] : inCart ? ['No caixa', 'yellow'] : quantity !== 1 ? ['Sem saldo', 'gray'] : ['Disponível', 'teal'];
-  return <Table.Tr className={selected ? 'selected-row' : ''} onClick={onSelect}><Table.Td className="inventory-product-cell"><Text fw={600} className="inventory-product-name">{unit.name}</Text><Text size="xs" ff="monospace" className="inventory-inline-barcode">{unit.barcode}</Text></Table.Td><Table.Td className="inventory-barcode-column"><Text size="xs" ff="monospace">{unit.barcode}</Text></Table.Td><Table.Td className="inventory-variant-cell">{[unit.color, unit.size].filter(Boolean).join(' · ') || '—'}</Table.Td><Table.Td ta="right" className="inventory-price-cell">{money(unit.price)}</Table.Td><Table.Td><Badge color={state[1]} variant="light" className="inventory-state-badge">{state[0]}</Badge></Table.Td></Table.Tr>;
+  return <Table.Tr className={selected ? 'selected-row' : ''} onClick={onSelect}><Table.Td className="inventory-product-cell"><Group gap="sm" wrap="nowrap"><ProductPhotoPreview path={unit.photo_path} name={unit.name} size={44} /><Box><Text fw={600} className="inventory-product-name">{unit.name}</Text><Text size="xs" ff="monospace" className="inventory-inline-barcode">{unit.barcode}</Text></Box></Group></Table.Td><Table.Td className="inventory-barcode-column"><Text size="xs" ff="monospace">{unit.barcode}</Text></Table.Td><Table.Td className="inventory-variant-cell">{[unit.color, unit.size].filter(Boolean).join(' · ') || '—'}</Table.Td><Table.Td ta="right" className="inventory-price-cell">{money(unit.price)}</Table.Td><Table.Td><Badge color={state[1]} variant="light" className="inventory-state-badge">{state[0]}</Badge></Table.Td></Table.Tr>;
+}
+
+function CheckoutProductPhoto({ unit }) {
+  const initials = <span aria-hidden="true">{(unit.name || 'Peça').trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toLocaleUpperCase('pt-BR')}</span>;
+  return <Box className="pos-item-avatar"><ProductPhotoPreview path={unit.photo_path} name={unit.name} size={50} fallback={initials} /></Box>;
 }
 
 function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, environmentMode }) {
@@ -431,7 +437,7 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
         <Box className="pos-ticket-body">
           <ScrollArea className="pos-cart-scroll">
             {cart.items.length ? <ul className="pos-cart-list">{cart.items.map((item) => <li key={item.barcode} className="pos-cart-item">
-              <Box className="pos-item-avatar" aria-hidden="true">{(item.name || 'Peça').trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toLocaleUpperCase('pt-BR')}</Box>
+              <CheckoutProductPhoto unit={item} />
               <Box className="pos-item-copy">
                 <Text className="pos-item-name">{item.name}</Text>
                 <Box className="pos-item-details"><Text component="span" className="pos-item-variant">{[item.color, item.size].filter(Boolean).join(' · ') || 'Peça individual'}</Text><Text component="span" className="pos-item-barcode">{item.barcode}</Text></Box>
@@ -462,7 +468,7 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
       <TextInput aria-label="Pesquisar produto no estoque" size="md" placeholder="Busque por nome, código, marca, cor ou tamanho" leftSection={<IconSearch size={19} />} value={manualQuery} onChange={(event) => setManualQuery(event.currentTarget.value)} autoFocus />
       <Group justify="space-between" mt="sm" mb="md"><Text size="sm" c="dimmed">Selecione uma peça para adicionar à comanda.</Text><Badge color="teal" variant="light">{manualMatches.length} resultados</Badge></Group>
       <ScrollArea className="manual-stock-results">
-        {manualMatches.length ? <Stack gap="sm">{manualMatches.map((unit) => <Paper key={unit.barcode} withBorder radius="md" p="md" className="pos-product-row"><Group justify="space-between" wrap="nowrap"><Box className="pos-product-copy"><Text fw={700} lineClamp={1}>{unit.name}</Text><Text size="sm" c="dimmed">{[unit.brand, unit.category, unit.color, unit.size].filter(Boolean).join(' · ') || 'Sem variação informada'}</Text><Text size="xs" ff="monospace" c="dimmed">{unit.barcode}</Text></Box><Group gap="md" wrap="nowrap"><Text fw={800} className="pos-product-price">{money(unit.price)}</Text><Button variant="light" color="teal" leftSection={<IconPlus size={16} />} loading={busy === `cart-add-${unit.barcode}`} onClick={() => addManualProduct(unit)} aria-label={`Adicionar ${unit.name} ao caixa`}>Adicionar</Button></Group></Group></Paper>)}</Stack> : <EmptyState title={available.length ? 'Nenhum produto encontrado' : 'Nenhuma peça disponível'} text={available.length ? 'Tente buscar por outro nome ou código.' : 'As peças disponíveis aparecerão aqui para venda.'} icon={<IconSearch size={32} />} />}
+        {manualMatches.length ? <Stack gap="sm">{manualMatches.map((unit) => <Paper key={unit.barcode} withBorder radius="md" p="md" className="pos-product-row"><Group justify="space-between" wrap="nowrap"><CheckoutProductPhoto unit={unit} /><Box className="pos-product-copy"><Text fw={700} lineClamp={1}>{unit.name}</Text><Text size="sm" c="dimmed">{[unit.brand, unit.category, unit.color, unit.size].filter(Boolean).join(' · ') || 'Sem variação informada'}</Text><Text size="xs" ff="monospace" c="dimmed">{unit.barcode}</Text></Box><Group gap="md" wrap="nowrap"><Text fw={800} className="pos-product-price">{money(unit.price)}</Text><Button variant="light" color="teal" leftSection={<IconPlus size={16} />} loading={busy === `cart-add-${unit.barcode}`} onClick={() => addManualProduct(unit)} aria-label={`Adicionar ${unit.name} ao caixa`}>Adicionar</Button></Group></Group></Paper>)}</Stack> : <EmptyState title={available.length ? 'Nenhum produto encontrado' : 'Nenhuma peça disponível'} text={available.length ? 'Tente buscar por outro nome ou código.' : 'As peças disponíveis aparecerão aqui para venda.'} icon={<IconSearch size={32} />} />}
       </ScrollArea>
     </Drawer>
   </>;
@@ -470,6 +476,7 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
 
 function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmentMode }) {
   const [additionalOpen, setAdditionalOpen] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const updateFiscal = (key, value) => setDraft((current) => ({ ...current, fiscal: { ...current.fiscal, [key]: value } }));
   const updateVariant = (index, key, value) => setDraft((current) => ({ ...current, variants: current.variants.map((variant, row) => row === index ? { ...variant, [key]: key === 'quantity' ? (String(value).trim() === '' ? '' : (Number.isFinite(Number(value)) ? Number(value) : String(value))) : value } : variant) }));
@@ -484,12 +491,13 @@ function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmen
     <Box className="product-layout">
       <Stack gap="md" className="product-main">
     <Paper withBorder radius="md" p="lg"><SectionTitle number="1" title="Informações do produto" /><Stack gap="sm" mt="md"><TextInput label="Nome do produto" required value={draft.name} onChange={(event) => update('name', event.currentTarget.value)} autoFocus /><SimpleGrid cols={{ base: 1, sm: 3 }}><TextInput label="Marca (opcional)" placeholder="Informe a marca" value={draft.brand} onChange={(event) => update('brand', event.currentTarget.value)} /><TextInput label="Tipo de peça" placeholder="Ex.: camiseta, calça" value={draft.category} onChange={(event) => update('category', event.currentTarget.value)} /><TextInput label="Código interno (opcional)" value={draft.internal_code} onChange={(event) => update('internal_code', event.currentTarget.value)} /></SimpleGrid><SimpleGrid cols={2}><MoneyInput label="Preço de custo" value={draft.cost} onChange={(value) => update('cost', value)} /><MoneyInput label="Preço de venda" required value={draft.price} onChange={(value) => update('price', value)} /></SimpleGrid>{mode === 'edit' ? <SimpleGrid cols={2}><TextInput label="Cor" value={draft.color} onChange={(event) => update('color', event.currentTarget.value)} /><TextInput label="Tamanho" value={draft.size} onChange={(event) => update('size', event.currentTarget.value)} /></SimpleGrid> : <Text size="sm" c="dimmed">O mesmo preço será aplicado às peças deste cadastro.</Text>}</Stack></Paper>
+        <Paper withBorder radius="md" p="lg"><ProductPhotoField value={draft.photo} onChange={(value) => update('photo', value)} disabled={busy} onBusyChange={setPhotoBusy} /></Paper>
         <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="xs"><SectionTitle number="2" title="Cores, tamanhos e quantidades" /></Group><Text size="sm" c="dimmed" ml={42} mb="sm">Adicione uma linha para cada combinação de cor e tamanho.</Text><VariantTable variants={draft.variants} onChange={updateVariant} onRemove={removeVariant} readOnly={mode === 'edit'} /><Group justify="space-between" mt="sm"><Button variant="default" leftSection={<IconPlus size={17} />} onClick={addVariant} disabled={mode === 'edit'}>Adicionar variação</Button><Text size="sm" fw={700} c="dimmed">{integer.format(pieces)} peças no total</Text></Group></Paper>
-        <Paper withBorder radius="md" p={0}><Button fullWidth variant="subtle" justify="space-between" rightSection={additionalOpen ? <IconChevronDown size={17} /> : <IconChevronRight size={17} />} leftSection={<IconChevronRight size={17} />} onClick={() => setAdditionalOpen((value) => !value)} className="additional-toggle">Informações adicionais <Text span size="sm" c="dimmed" fw={400}>Localização, observações e dados fiscais</Text></Button><Collapse expanded={additionalOpen}><Box p="lg" pt={0}><SimpleGrid cols={2} mt="md"><TextInput label="Localização" value={draft.location} onChange={(event) => update('location', event.currentTarget.value)} /><TextInput label="Referência da foto" value={draft.photo} onChange={(event) => update('photo', event.currentTarget.value)} /></SimpleGrid><Textarea mt="sm" label="Observações" minRows={3} value={draft.notes} onChange={(event) => update('notes', event.currentTarget.value)} /><Text fw={700} mt="lg" mb="sm">Dados fiscais</Text><SimpleGrid cols={2}>{[...fiscalTextKeys, ...fiscalNumberKeys].map((key) => <TextInput key={key} label={fiscalLabels[key]} value={valueText(draft.fiscal[key])} onChange={(event) => updateFiscal(key, event.currentTarget.value)} />)}</SimpleGrid></Box></Collapse></Paper>
+        <Paper withBorder radius="md" p={0}><Button fullWidth variant="subtle" justify="space-between" rightSection={additionalOpen ? <IconChevronDown size={17} /> : <IconChevronRight size={17} />} leftSection={<IconChevronRight size={17} />} onClick={() => setAdditionalOpen((value) => !value)} className="additional-toggle">Informações adicionais <Text span size="sm" c="dimmed" fw={400}>Localização, observações e dados fiscais</Text></Button><Collapse expanded={additionalOpen}><Box p="lg" pt={0}><SimpleGrid cols={2} mt="md"><TextInput label="Localização" value={draft.location} onChange={(event) => update('location', event.currentTarget.value)} /></SimpleGrid><Textarea mt="sm" label="Observações" minRows={3} value={draft.notes} onChange={(event) => update('notes', event.currentTarget.value)} /><Text fw={700} mt="lg" mb="sm">Dados fiscais</Text><SimpleGrid cols={2}>{[...fiscalTextKeys, ...fiscalNumberKeys].map((key) => <TextInput key={key} label={fiscalLabels[key]} value={valueText(draft.fiscal[key])} onChange={(event) => updateFiscal(key, event.currentTarget.value)} />)}</SimpleGrid></Box></Collapse></Paper>
       </Stack>
       <SummaryCard draft={draft} variants={validVariants} pieces={pieces} />
     </Box>
-    <Paper withBorder radius={0} className="product-actions"><Text size="sm" c="dimmed">Confira as quantidades antes de cadastrar.</Text><Group><Button variant="default" onClick={onCancel}>Cancelar</Button><Button color="teal" leftSection={<IconDeviceFloppy size={17} />} loading={busy} onClick={() => onSave(draft)}>{mode === 'edit' ? 'Salvar alterações' : 'Cadastrar produto'}</Button></Group></Paper>
+    <Paper withBorder radius={0} className="product-actions"><Text size="sm" c="dimmed">Confira as quantidades antes de cadastrar.</Text><Group><Button variant="default" disabled={busy || photoBusy} onClick={onCancel}>Cancelar</Button><Button color="teal" leftSection={<IconDeviceFloppy size={17} />} loading={busy} disabled={photoBusy} onClick={() => onSave(draft)}>{mode === 'edit' ? 'Salvar alterações' : 'Cadastrar produto'}</Button></Group></Paper>
   </Box>;
 }
 
@@ -647,6 +655,7 @@ function SettingsPage() {
 }
 
 function EditDrawer({ unit, onClose, onSave, busy }) {
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [draft, setDraft] = useState(null);
   useEffect(() => { setDraft(unit ? makeDraftFromUnit(unit) : null); }, [unit]);
   if (!draft) return null;
@@ -657,7 +666,7 @@ function EditDrawer({ unit, onClose, onSave, busy }) {
     setDraft(nextDraft);
     onSave(nextDraft);
   };
-  return <Modal opened={Boolean(unit)} onClose={onClose} title="Editar peça" centered size={960} radius="md" padding="lg" classNames={{ content: 'stock-modal stock-edit-modal', header: 'stock-modal-header', body: 'stock-modal-body' }}>
+  return <Modal opened={Boolean(unit)} onClose={busy || photoBusy ? () => {} : onClose} closeOnClickOutside={!busy && !photoBusy} closeOnEscape={!busy && !photoBusy} withCloseButton={!busy && !photoBusy} title="Editar peça" centered size={960} radius="md" padding="lg" classNames={{ content: 'stock-modal stock-edit-modal', header: 'stock-modal-header', body: 'stock-modal-body' }}>
     <Stack>
       <TextInput label="Nome do produto" required value={draft.name} onChange={(event) => update('name', event.currentTarget.value)} />
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
@@ -674,11 +683,11 @@ function EditDrawer({ unit, onClose, onSave, busy }) {
         <MoneyInput label="Preço de venda" required value={draft.price} onChange={(value) => update('price', value)} />
       </SimpleGrid>
       <TextInput label="Localização" value={draft.location} onChange={(event) => update('location', event.currentTarget.value)} />
-      <TextInput label="Referência da foto" value={draft.photo} onChange={(event) => update('photo', event.currentTarget.value)} />
+      <ProductPhotoField value={draft.photo} onChange={(value) => update('photo', value)} disabled={busy} onBusyChange={setPhotoBusy} />
       <Textarea label="Observações" value={draft.notes} onChange={(event) => update('notes', event.currentTarget.value)} />
       <Text fw={700}>Dados fiscais</Text>
       <SimpleGrid cols={2}>{[...fiscalTextKeys, ...fiscalNumberKeys].map((key) => <TextInput key={key} label={fiscalLabels[key]} value={valueText(draft.fiscal[key])} onChange={(event) => updateFiscal(key, event.currentTarget.value)} />)}</SimpleGrid>
-      <Button color="teal" loading={busy} onClick={submit}>Salvar alterações</Button>
+      <Button color="teal" loading={busy} disabled={photoBusy} onClick={submit}>Salvar alterações</Button>
     </Stack>
   </Modal>;
 }

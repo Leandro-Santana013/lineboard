@@ -6,7 +6,8 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: fileURLToPath(new URL('../bin/ui', import.meta.url)),
+    // A frontend-only build must never update the installed native bundle.
+    outDir: fileURLToPath(new URL('../obj/ui', import.meta.url)),
     emptyOutDir: true,
     sourcemap: false,
   },

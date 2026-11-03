@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'domain.dart';
 import 'local_gateway.dart';
 import 'scan_label.dart';
+import 'product_photo.dart';
 
 class LocalProductForm extends StatefulWidget {
   const LocalProductForm(this.gateway, {super.key});
@@ -20,7 +21,6 @@ class _LocalProductFormState extends State<LocalProductForm> {
       'cost',
       'price',
       'location',
-      'photo',
       'notes',
       'internal_code',
     ])
@@ -53,6 +53,8 @@ class _LocalProductFormState extends State<LocalProductForm> {
       key: TextEditingController(),
   };
   bool busy = false;
+  ProductPhoto? photo;
+  String? uploadedPhotoPath;
   String? error;
   List<CatalogItem>? created;
   @override
@@ -90,9 +92,13 @@ class _LocalProductFormState extends State<LocalProductForm> {
       error = null;
     });
     try {
+      if (pending == null && photo != null && uploadedPhotoPath == null) {
+        uploadedPhotoPath = await widget.gateway.uploadPhoto(photo!);
+      }
       final result = pending != null
           ? await widget.gateway.retryProduct()
           : await widget.gateway.createProduct({
+              'photo': uploadedPhotoPath ?? '',
               for (final entry in fields.entries)
                 entry.key: entry.key == 'cost' || entry.key == 'price'
                     ? money(entry.value.text)!
@@ -183,8 +189,11 @@ class _LocalProductFormState extends State<LocalProductForm> {
                   subtitle: Text('${item.variant}\n${item.barcode}'),
                   isThreeLine: true,
                   trailing: const Icon(Icons.label_outline),
-                  onTap: () => Navigator.of(context)
-                      .push(MaterialPageRoute(builder: (_) => LabelPage(item))),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => LabelPage(item, gateway: widget.gateway),
+                    ),
+                  ),
                 ),
               ),
           ],
@@ -232,10 +241,13 @@ class _LocalProductFormState extends State<LocalProductForm> {
                 max: 20,
               ),
               field(fields['location']!, 'Localização', max: 80),
-              field(
-                fields['photo']!,
-                'Referência da foto (opcional)',
-                max: 1000,
+              ProductPhotoField(
+                photo: photo,
+                enabled: !busy,
+                onChanged: (value) => setState(() {
+                  photo = value;
+                  uploadedPhotoPath = null;
+                }),
               ),
               field(fields['notes']!, 'Observações', max: 4000),
               const Text(

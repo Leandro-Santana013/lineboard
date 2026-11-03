@@ -124,6 +124,15 @@ namespace Lineboard {
     var variant=Scalar(c,tx,"SELECT TOP(1) variant_id FROM lineboard.Units WHERE product_id=@product AND color=@color AND size=@size","@product",Validation.Id((string)before["product_id"]),"@color",draft.color,"@size",draft.size)??(object)Guid.NewGuid();
     NonQuery(c,tx,"UPDATE lineboard.Units SET variant_id=@variant,category=@category,color=@color,size=@size,location=@location,photo=@photo,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE barcode=@code","@variant",variant,"@category",draft.category,"@color",draft.color,"@size",draft.size,"@location",draft.location,"@photo",draft.photo,"@code",barcode);
     var after=Unit(c,tx,barcode);NonQuery(c,tx,"INSERT lineboard.UnitEdits(operation_id,unit_id,before_json,after_json) VALUES(@operation,@unit,@before,@after)","@operation",operation,"@unit",Validation.Id((string)before["stock_item_id"]),"@before",Json.Write(before),"@after",Json.Write(after));
+    if(!String.Equals(Convert.ToString(before["photo_path"]),draft.photo,StringComparison.Ordinal)){
+     var siblings=Rows(c,tx,"SELECT barcode FROM lineboard.Units WHERE product_id=@product AND barcode<>@code ORDER BY barcode","@product",Validation.Id((string)before["product_id"]),"@code",barcode);
+     foreach(var sibling in siblings){
+      var code=Convert.ToString(sibling["barcode"]);var siblingBefore=Unit(c,tx,code);
+      NonQuery(c,tx,"UPDATE lineboard.Units SET photo=@photo,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE barcode=@code","@photo",draft.photo,"@code",code);
+      var siblingAfter=Unit(c,tx,code);NonQuery(c,tx,"INSERT lineboard.UnitEdits(operation_id,unit_id,before_json,after_json) VALUES(@operation,@unit,@before,@after)","@operation",operation,"@unit",Validation.Id((string)siblingBefore["stock_item_id"]),"@before",Json.Write(siblingBefore),"@after",Json.Write(siblingAfter));
+      Event(c,tx,"unit.upsert",siblingAfter);
+     }
+    }
     NonQuery(c,tx,"UPDATE lineboard.Settings SET cart_version=cart_version+1 WHERE id=1");Event(c,tx,"unit.upsert",after);return after;
    });
   }

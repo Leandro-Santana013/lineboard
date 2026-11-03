@@ -22,7 +22,7 @@
 		</dict>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>A câmera identifica os produtos pelas etiquetas de código de barras.</string>
+	<string>A câmera lê as etiquetas e tira fotos dos produtos da sua loja.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Escolha uma foto para identificar o produto na sua loja.</string>
 	<key>CFBundleURLTypes</key>

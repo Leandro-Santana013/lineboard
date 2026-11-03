@@ -17,16 +17,18 @@ controlado; o executável normal abre `SICNET`.
 # Na raiz do projeto:
 Push-Location desktop/frontend
 npm ci
-npm run build
 Pop-Location
 .\desktop\scripts\build.ps1
 .\desktop\scripts\start.ps1
 ```
 
-O build da GUI usa os arquivos já compilados em `desktop/bin/ui`. Gere esses
-arquivos com `npm run build` dentro de `desktop/frontend` antes de executar
-`desktop/scripts/build.ps1`; o script falha se a interface não estiver
-empacotada. O pacote local fixado `Microsoft.Web.WebView2` 1.0.4314.35 é
+O `desktop/scripts/build.ps1` compila a interface e o executável em uma pasta
+separada, verifica o comando de envio de JPG e instala o conjunto completo
+somente depois que todas as etapas passam. Feche o Lineboard antes de instalar;
+`build.ps1 -PrepareOnly` prepara uma cópia sem alterar a versão em uso. O pacote
+anterior fica preservado em `.local/desktop-build` para recuperação. Um build
+somente do frontend gera `desktop/obj/ui`, sem modificar a instalação em `desktop/bin`.
+O pacote local fixado `Microsoft.Web.WebView2` 1.0.4314.35 é
 baixado uma vez para `.local/webview2`, verificado por SHA-256 e reduzido às
 assemblies `net462` e ao `WebView2Loader.dll` x64 em `desktop/bin`. O runtime
 Evergreen WebView2 precisa estar instalado no Windows; esta máquina usa

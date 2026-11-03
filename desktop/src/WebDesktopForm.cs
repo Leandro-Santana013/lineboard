@@ -26,6 +26,7 @@ namespace Lineboard {
   readonly RealtimeBridge realtime;
   readonly WebView2 webView=new WebView2 {Dock=DockStyle.Fill,Margin=Padding.Empty};
   readonly SemaphoreSlim bridgeGate=new SemaphoreSlim(1,1);
+  readonly SemaphoreSlim photoGate=new SemaphoreSlim(3,3);
   readonly SemaphoreSlim exportGate=new SemaphoreSlim(1,1);
   DesktopBridge bridge;
   bool initialized;
@@ -219,21 +220,26 @@ namespace Lineboard {
    return (Dictionary<string,object>)response["error"];
   }
 
-  static bool IsUiOnlyBridgeAction(string message) {
+  static string BridgeAction(string message) {
    try {
     var envelope=Json.Read<Dictionary<string,object>>(message);object action;
-    return envelope!=null&&envelope.TryGetValue("action",out action)&&String.Equals(action as string,"labels.export",StringComparison.Ordinal);
-   } catch { return false; }
+    return envelope!=null&&envelope.TryGetValue("action",out action)?action as string:null;
+   } catch { return null; }
   }
   async void OnWebMessageReceived(object sender,CoreWebView2WebMessageReceivedEventArgs args) {
    if(bridge==null||webView.CoreWebView2==null)return;
-   var source=args.Source;var message=args.WebMessageAsJson;string response;
-   if(IsUiOnlyBridgeAction(message)) {
+   var source=args.Source;var message=args.WebMessageAsJson;var action=BridgeAction(message);string response;
+   if(action=="labels.export") {
     // SaveFileDialog must stay on the WinForms STA, but it must not hold the
     // SQL gate while its modal loop lets bootstrap polling continue.
     await exportGate.WaitAsync();
     try { response=bridge.Process(source,message); }
     finally { exportGate.Release(); }
+   } else if(action=="photo.url"||action=="photo.upload") {
+    // Optional network images must not queue stock/sale operations behind them.
+    await photoGate.WaitAsync();
+    try { response=await Task.Run(()=>bridge.Process(source,message)); }
+    finally { photoGate.Release(); }
    } else {
     await bridgeGate.WaitAsync();
     try { response=await Task.Run(()=>bridge.Process(source,message)); }

@@ -191,8 +191,11 @@ class _LocalHomeState extends State<LocalHome> {
     await perform(() async {
       final item = await widget.gateway.lookup(code);
       if (mounted) {
-        await Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => LabelPage(item)));
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => LabelPage(item, gateway: widget.gateway),
+          ),
+        );
       }
     });
   }

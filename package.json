@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/database.test.mjs tests/sic-sync.test.mjs tests/shared-cart.test.mjs",
+    "test": "node --experimental-strip-types --test tests/database.test.mjs tests/sic-sync.test.mjs tests/shared-cart.test.mjs tests/product-photos.test.mjs tests/photo-upload.test.mjs",
     "test:postgres": "node --test tests/postgres.test.mjs"
   },
   "devDependencies": {

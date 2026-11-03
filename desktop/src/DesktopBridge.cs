@@ -13,7 +13,7 @@ namespace Lineboard {
  public sealed class DesktopBridge {
   public const string Origin = "https://lineboard.local/";
   static readonly HashSet<string> Actions = new HashSet<string>(StringComparer.Ordinal) {
-   "bootstrap", "product.create", "unit.get", "unit.edit", "stock.adjust",
+   "bootstrap", "product.create", "photo.upload", "photo.url", "unit.get", "unit.edit", "stock.adjust",
    "cart.add", "cart.remove", "cart.confirm", "sales.report", "history.list", "labels.preview",
    "labels.export", "settings.info", "pair.open", "support.outbox"
   };
@@ -34,6 +34,7 @@ namespace Lineboard {
    if(!IsTrustedSource(source)) return Error(null, "ORIGIN_REFUSED", "A interface só pode ser usada pelo aplicativo Lineboard.");
    string id=null;
    try {
+    if(message==null||message.Length>8*1024*1024)throw new DomainError("REQUEST_TOO_LARGE");
     var envelope=Json.Read<Dictionary<string,object>>(message);
     if(envelope==null)throw new DomainError("INVALID_MESSAGE");
     foreach(var key in envelope.Keys)if(key!="id"&&key!="action"&&key!="payload")throw new DomainError("INVALID_MESSAGE");
@@ -89,6 +90,8 @@ namespace Lineboard {
 
   object Dispatch(string action,Dictionary<string,object> payload) {
    switch(action) {
+    case "photo.upload":ExactKeys(payload,"content_type","data");return sync.UploadPhoto(RequiredString(payload,"content_type",40),RequiredString(payload,"data",7*1024*1024));
+    case "photo.url":ExactKeys(payload,"photo_path");return sync.PhotoUrl(RequiredString(payload,"photo_path",1000));
     case "bootstrap":
      ExactKeys(payload);var bootstrap=new {catalog=store.Catalog(),cart=store.Cart(),mode=store.Production?"production":"sandbox",sync_state=backgroundSync.State};BootstrapServed=true;return bootstrap;
     case "product.create": {
@@ -159,6 +162,11 @@ namespace Lineboard {
 
   static string Friendly(string code) {
    var messages=new Dictionary<string,string>(StringComparer.Ordinal) {
+    {"PHOTO_TOO_LARGE","Escolha uma imagem de até 5 MB."},
+    {"INVALID_PHOTO_TYPE","Escolha uma imagem JPG/JPEG, PNG ou WebP válida."},
+    {"INVALID_PHOTO","Não foi possível abrir esta foto. Escolha a imagem novamente."},
+    {"PHOTO_UPLOAD_FAILED","Não foi possível enviar a foto. Confira a conexão e tente novamente."},
+    {"CLOUD_NOT_CONFIGURED","Configure a conexão da loja para enviar fotos."},
     {"ORIGIN_REFUSED","A interface só pode ser usada pelo aplicativo Lineboard."},
     {"INVALID_MESSAGE","A mensagem da interface não é válida."},
     {"INVALID_PAYLOAD","Confira os dados enviados pela interface."},

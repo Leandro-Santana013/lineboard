@@ -46,6 +46,34 @@ describe('Lineboard frontend', () => {
   });
   afterEach(() => { clearBridgeMock(); vi.restoreAllMocks(); });
 
+  it('shows the saved product photo in the caixa and keeps initials when unavailable', async () => {
+    const photoPath = 'store/checkout-product.jpg';
+    setBridgeMock(({ action }) => {
+      if (action === 'bootstrap') {
+        const data = bootstrap();
+        data.cart.items[0] = { ...data.cart.items[0], photo_path: photoPath };
+        data.catalog[1].photo_path = photoPath;
+        return { data };
+      }
+      if (action === 'photo.url') return { url: 'https://example.test/checkout-product.jpg' };
+      return { data: {} };
+    });
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    const photo = await screen.findByRole('img', { name: 'Foto de Camiseta básica' });
+    expect(photo).toHaveAttribute('src', 'https://example.test/checkout-product.jpg');
+    expect(document.querySelector('.pos-item-avatar')).not.toHaveTextContent('CB');
+    fireEvent.error(photo);
+    expect(screen.queryByRole('img', { name: 'Foto de Camiseta básica' })).not.toBeInTheDocument();
+    expect(document.querySelector('.pos-item-avatar')).toHaveTextContent('CB');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir estoque' }));
+    expect(await screen.findByRole('img', { name: 'Foto de Calça jeans' })).toHaveAttribute('src', 'https://example.test/checkout-product.jpg');
+    const noPhoto = screen.getByRole('button', { name: 'Adicionar Jaqueta leve ao caixa' }).closest('.pos-product-row');
+    expect(within(noPhoto).queryByRole('img')).not.toBeInTheDocument();
+    expect(noPhoto.querySelector('.pos-item-avatar')).toHaveTextContent('JL');
+  });
+
   it('separates estoque and caixa into dedicated navigation views', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'Estoque' });

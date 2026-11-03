@@ -17,10 +17,13 @@ Copy-Item -LiteralPath (Join-Path $desktopRoot 'schema.sql') -Destination (Join-
 & (Join-Path $PSScriptRoot 'New-SicSandbox.ps1') -Server $Server -Database $database -Empty
 $exitCode = 0
 try {
-    & $testExecutable $workspace $database
+    & $testExecutable $workspace $database $Server
     $exitCode = $LASTEXITCODE
 } finally {
-    Remove-Item -LiteralPath $output -Recurse -Force -ErrorAction SilentlyContinue
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    $resolvedOutput = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $output).Path)
+    if (-not $resolvedOutput.StartsWith($temporaryRoot + 'lineboard-bridge-verification-', [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing cleanup outside the temporary bridge test directory.' }
+    Remove-Item -LiteralPath $resolvedOutput -Recurse -Force -ErrorAction SilentlyContinue
 }
 if ($exitCode -ne 0) { throw 'Desktop bridge tests failed.' }
 # Keep the dedicated sandbox as evidence. The temporary test executable is not

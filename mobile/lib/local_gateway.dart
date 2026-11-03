@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import 'domain.dart';
 import 'pending_store.dart';
+import 'product_photo.dart';
 
 abstract class LocalCredentials {
   Future<String?> read();
@@ -45,6 +46,13 @@ class LocalApiError implements Exception {
     'PENDING_REQUEST' =>
       'Existe uma solicitação pendente. Retome antes de enviar outra.',
     'WRONG_INSTANCE' => 'O endereço está conectado a outra base. Pareie com o computador correto.',
+    'PHOTO_TOO_LARGE' => 'A foto deve ter no máximo 5 MB.',
+    'CLOUD_NOT_CONFIGURED' => 'Configure a conexão da loja para enviar imagens.',
+    'CLOUD_NOT_ACKNOWLEDGED' => 'Não foi possível acessar as imagens. Confira a conexão da loja.',
+    'INVALID_PHOTO' => 'Imagem inválida. Escolha a foto novamente.',
+    'PHOTO_UPLOAD_FAILED' => 'Não foi possível enviar a foto. Tente novamente.',
+    'INVALID_PHOTO_TYPE' => 'Escolha uma foto JPG/JPEG, PNG ou WebP válida.',
+    'PHOTO_CLOUD_UNAVAILABLE' => 'Não foi possível enviar a imagem. Confira a conexão do desktop com a nuvem.',
     _ =>
       'A operação não foi confirmada ($code). Confira o desktop antes de reenviar.',
   };
@@ -199,6 +207,28 @@ class LocalGateway {
     return saved == null
         ? null
         : Map<String, dynamic>.from(jsonDecode(saved) as Map);
+  }
+
+  Future<String> uploadPhoto(ProductPhoto photo) async {
+    ProductPhoto.validate(photo.bytes);
+    final result = await _request(
+      'POST',
+      'api/photos',
+      body: {
+        'content_type': photo.contentType,
+        'data': base64Encode(photo.bytes),
+      },
+    );
+    return result['photo_path'] as String;
+  }
+
+  Future<String> photoUrl(String path) async {
+    final result = await _request(
+      'POST',
+      'api/photos/url',
+      body: {'photo_path': path},
+    );
+    return result['url'] as String;
   }
 
   Future<Map<String, dynamic>> createProduct(

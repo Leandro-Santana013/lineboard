@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import 'domain.dart';
 import 'pending_store.dart';
+import 'product_photo.dart';
 
 class Repository {
   Repository(this.client, this.prefs, this.pendingStore)
@@ -269,9 +270,27 @@ class Repository {
     }
   }
 
+  Future<String> uploadPhoto(String org, ProductPhoto photo) async {
+    _checkSession();
+    ProductPhoto.validate(photo.bytes);
+    final path = '$org/${const Uuid().v4()}.${photo.extension}';
+    await client.storage
+        .from('product-photos')
+        .uploadBinary(
+          path,
+          photo.bytes,
+          fileOptions: FileOptions(contentType: photo.contentType),
+        );
+    _checkSession();
+    return path;
+  }
+
+  Future<String> photoUrl(String path) =>
+      client.storage.from('product-photos').createSignedUrl(path, 300);
+
   Future<void> updateProduct(
     CatalogItem item,
-    Map<String, String> fields,
+    Map<String, dynamic> fields,
   ) async {
     _checkSession();
     await client

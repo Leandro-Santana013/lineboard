@@ -121,7 +121,7 @@ namespace Lineboard {
    try{
     await Ack(org,commandId,"processing",null,null);
     switch(kind){
-     case "product.create": payload["request_id"]=requestId;result=store.CreateProduct(Json.Read<ProductDraft>(Json.Write(payload)));break;
+     case "product.create": result=store.CreateProduct(ProductFromCommand(requestId,payload));break;
      case "cart.add": payload["request_id"]=requestId;result=store.AddCart(Json.Read<CartDraft>(Json.Write(payload)));break;
      case "cart.remove": payload["request_id"]=requestId;result=store.RemoveCart(Json.Read<CartDraft>(Json.Write(payload)));break;
      case "stock.adjust": payload["request_id"]=requestId;result=store.Adjust(Json.Read<AdjustmentDraft>(Json.Write(payload)));break;
@@ -135,6 +135,11 @@ namespace Lineboard {
    Release(commandId);
   }
   void Release(string commandId){lock(commandGate)activeCommands.Remove(commandId);}
+  internal static ProductDraft ProductFromCommand(string requestId,Dictionary<string,object> payload){
+   var normalized=new Dictionary<string,object>(payload);normalized["request_id"]=requestId;
+   object photo;if(normalized.TryGetValue("photo_path",out photo))normalized["photo"]=photo;
+   return Json.Read<ProductDraft>(Json.Write(normalized));
+  }
   static void Observe(Task task){if(task==null)return;task.ContinueWith(t=>{var ignored=t.Exception;},TaskContinuationOptions.OnlyOnFaulted);}
   Dictionary<string,object> ApplySale(string requestId,Dictionary<string,object> payload){
    var lines=payload.ContainsKey("lines")?payload["lines"] as IEnumerable<object>:null;if(lines==null)throw new DomainError("INVALID_LINES");var drafts=new List<SaleLineDraft>();

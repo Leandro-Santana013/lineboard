@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -7,6 +6,7 @@ import 'app.dart';
 import 'domain.dart';
 import 'repository.dart';
 import 'scan_label.dart';
+import 'product_photo.dart';
 
 class VariantFields {
   final color = TextEditingController();
@@ -44,7 +44,7 @@ class _ProductFormState extends State<ProductForm> {
       notes = TextEditingController();
   final variants = [VariantFields()];
   String tracking = 'quantity';
-  XFile? photo;
+  ProductPhoto? photo;
   bool busy = false;
   String? error;
   Map<String, dynamic>? pending;
@@ -78,31 +78,21 @@ class _ProductFormState extends State<ProductForm> {
 
   @override
   void dispose() {
-    for (final controller in [name, category, brand, model, cost, price, notes]) {
+    for (final controller in [
+      name,
+      category,
+      brand,
+      model,
+      cost,
+      price,
+      notes,
+    ]) {
       controller.dispose();
     }
     for (final variant in variants) {
       variant.dispose();
     }
     super.dispose();
-  }
-
-  Future<void> choosePhoto() async {
-    try {
-      final file = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1600,
-        imageQuality: 80,
-      );
-      if (file != null && mounted) setState(() => photo = file);
-    } catch (_) {
-      if (mounted) {
-        toast(
-          context,
-          'Não foi possível abrir as fotos. Confira as permissões.',
-        );
-      }
-    }
   }
 
   Future<void> submit() async {
@@ -131,26 +121,7 @@ class _ProductFormState extends State<ProductForm> {
         }
         String? path;
         if (photo != null) {
-          final bytes = await photo!.readAsBytes();
-          if (bytes.length > 5 * 1024 * 1024) {
-            throw const FormatException('PHOTO_TOO_LARGE');
-          }
-          final ext = photo!.name.split('.').last.toLowerCase();
-          final type = switch (ext) {
-            'png' => 'image/png',
-            'webp' => 'image/webp',
-            'jpg' || 'jpeg' => 'image/jpeg',
-            _ => null,
-          };
-          if (type == null) throw const FormatException('INVALID_PHOTO_TYPE');
-          path = '${widget.org}/${const Uuid().v4()}.$ext';
-          await widget.repo.client.storage
-              .from('product-photos')
-              .uploadBinary(
-                path,
-                bytes,
-                fileOptions: FileOptions(contentType: type),
-              );
+          path = await widget.repo.uploadPhoto(widget.org, photo!);
         }
         final product = <String, dynamic>{
           'name': name.text.trim(),
@@ -172,7 +143,9 @@ class _ProductFormState extends State<ProductForm> {
       final rawUnits = created['units'];
       final result = rawUnits is List
           ? rawUnits
-                .map((item) => CatalogItem(Map<String, dynamic>.from(item as Map)))
+                .map(
+                  (item) => CatalogItem(Map<String, dynamic>.from(item as Map)),
+                )
                 .toList()
           : await widget.repo.productLabels(
               widget.org,
@@ -309,7 +282,9 @@ class _ProductFormState extends State<ProductForm> {
               children: [
                 Expanded(child: moneyField(cost, 'Custo')),
                 const SizedBox(width: 12),
-                Expanded(child: moneyField(price, 'Preço de venda', required: true)),
+                Expanded(
+                  child: moneyField(price, 'Preço de venda', required: true),
+                ),
               ],
             ),
             DropdownButtonFormField<String>(
@@ -344,20 +319,11 @@ class _ProductFormState extends State<ProductForm> {
             ),
             const SizedBox(height: 20),
             field(notes, 'Observações', lines: 3, limit: 2000),
-            OutlinedButton.icon(
-              onPressed: busy ? null : choosePhoto,
-              icon: const Icon(Icons.photo_outlined),
-              label: Text(
-                photo == null
-                    ? 'Adicionar foto (opcional)'
-                    : 'Foto: ${photo!.name}',
-              ),
+            ProductPhotoField(
+              photo: photo,
+              enabled: !busy,
+              onChanged: (value) => setState(() => photo = value),
             ),
-            if (photo != null)
-              TextButton(
-                onPressed: busy ? null : () => setState(() => photo = null),
-                child: const Text('Remover foto'),
-              ),
             if (error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 16),
@@ -409,7 +375,9 @@ class _ProductFormState extends State<ProductForm> {
       validator: (value) {
         final parsed = _money(value ?? '');
         if (parsed == null || parsed < 0 || (required && parsed == 0)) {
-          return required ? 'Informe um valor maior que zero.' : 'Informe um valor válido.';
+          return required
+              ? 'Informe um valor maior que zero.'
+              : 'Informe um valor válido.';
         }
         return null;
       },
@@ -423,9 +391,12 @@ class _ProductFormState extends State<ProductForm> {
     }
     return double.tryParse(normalized);
   }
+
   String _moneyText(Object? value) => value == null
       ? '0,00'
-      : (double.tryParse(value.toString()) ?? 0).toStringAsFixed(2).replaceAll('.', ',');
+      : (double.tryParse(value.toString()) ?? 0)
+            .toStringAsFixed(2)
+            .replaceAll('.', ',');
   Widget variantCard(int i) => Card(
     margin: const EdgeInsets.only(bottom: 16),
     child: Padding(

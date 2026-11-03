@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'domain.dart';
 import 'repository.dart';
+import 'product_photo.dart';
 
 class ProductEditDialog extends StatefulWidget {
   const ProductEditDialog(this.item, this.repo, {super.key});
@@ -16,6 +17,13 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
   late final Map<String, TextEditingController> fields;
   bool busy = false;
   String? error;
+  ProductPhoto? photo;
+  String? uploadedPhotoPath;
+  String? currentPhotoUrl;
+  bool photoChanged = false;
+  bool get hasPhoto =>
+      !photoChanged &&
+      (widget.item.data['photo_path'] as String? ?? '').isNotEmpty;
   static const names = {
     'name': 'Nome do produto',
     'category': 'Categoria',
@@ -30,6 +38,17 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
       for (final key in names.keys)
         key: TextEditingController(text: widget.item.data[key] ?? ''),
     };
+    loadPhoto();
+  }
+
+  Future<void> loadPhoto() async {
+    if (!hasPhoto) return;
+    try {
+      final url = await widget.repo.photoUrl(widget.item.data['photo_path']);
+      if (mounted && !photoChanged) setState(() => currentPhotoUrl = url);
+    } catch (_) {
+      /* The product remains editable if its image is unavailable. */
+    }
   }
 
   @override
@@ -47,13 +66,26 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
       error = null;
     });
     try {
-      final payload = fields.map(
-        (key, field) => MapEntry(key, field.text.trim()),
-      );
+      final payload = <String, dynamic>{
+        ...fields.map((key, field) => MapEntry(key, field.text.trim())),
+      };
+      if (photoChanged) {
+        if (photo != null && uploadedPhotoPath == null) {
+          uploadedPhotoPath = await widget.repo.uploadPhoto(
+            widget.item.data['organization_id'],
+            photo!,
+          );
+        }
+        payload['photo_path'] = photo == null ? null : uploadedPhotoPath;
+      }
       await widget.repo.updateProduct(widget.item, payload);
       if (mounted) Navigator.pop(context, payload);
     } catch (e) {
-      if (mounted) setState(() => error = friendlyError(e));
+      if (mounted) {
+        setState(
+          () => error = e is FormatException ? photoError(e) : friendlyError(e),
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -98,6 +130,18 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                           : null,
                     ),
                   ),
+                ProductPhotoField(
+                  photo: photo,
+                  currentUrl: currentPhotoUrl,
+                  hasCurrentPhoto: hasPhoto,
+                  enabled: !busy,
+                  onChanged: (value) => setState(() {
+                    photoChanged = true;
+                    photo = value;
+                    uploadedPhotoPath = null;
+                    currentPhotoUrl = null;
+                  }),
+                ),
                 if (error != null)
                   Text(error!, style: const TextStyle(color: Colors.red)),
               ],

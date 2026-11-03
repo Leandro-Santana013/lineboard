@@ -10,3 +10,4 @@ coverage/
 desktop/bin/
 desktop/obj/
 *.bak
+.slim/deepwork/

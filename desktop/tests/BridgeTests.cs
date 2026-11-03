@@ -30,12 +30,13 @@ namespace Lineboard {
   public static int Main(string[] args) {
    try {
     if(args.Length<2)throw new Exception("Usage: BridgeTests.exe <workspace> <database>");
-    var workspace=Path.GetFullPath(args[0]);var database=args[1];
+    var workspace=Path.GetFullPath(args[0]);var database=args[1];var server=args.Length>2?args[2]:@"(localdb)\MSSQLLocalDB";
     if(!database.StartsWith("LINEBOARD_LAB_BRIDGE",StringComparison.Ordinal))throw new Exception("A dedicated bridge sandbox is required.");
     Environment.SetEnvironmentVariable("LINEBOARD_SYNC_URL",null);Environment.SetEnvironmentVariable("LINEBOARD_SYNC_TOKEN",null);
-    var store=new SicStore(@"(localdb)\MSSQLLocalDB",database,workspace);
+    var store=new SicStore(server,database,workspace);
     if(Convert.ToInt64(Count(store,"lineboard.Units"))!=0)throw new Exception("Bridge tests require an empty sandbox.");
-    var original=Json.Write(Program.Probe(@"(localdb)\MSSQLLocalDB"));
+    using(var c=store.Open())SicStore.NonQuery(c,null,"UPDATE lineboard.Settings SET cloud_cart_version=-1,cart_version=0 WHERE id=1");
+    var original=Json.Write(Program.Probe(server));
     var api=new LocalApi(store,"localhost",FreePort());var sync=new CloudSync(store,(Func<Dictionary<string,object>,Dictionary<string,object>>)null);using(var background=new BackgroundSync(sync)) {
      string exported=null;var bridge=new DesktopBridge(store,api,sync,background,html=>{exported=html;return true;});
      var origin=DesktopBridge.Origin;
@@ -107,7 +108,20 @@ namespace Lineboard {
      try{store.Confirm(guardedSale);throw new Exception("expected idempotency conflict");}catch(DomainError error){if(error.Code!="IDEMPOTENCY_CONFLICT")throw;}
      Check("a changed retry cannot release the claim of an already committed sale",releases==1);
      var settings=Response(bridge,origin,"settings","settings.info",new{});Check("settings do not expose cloud credentials",!Json.Write(settings).Contains("LINEBOARD_SYNC_TOKEN"));
-     Check("original SIC database remains unchanged",original==Json.Write(Program.Probe(@"(localdb)\MSSQLLocalDB")));
+     var photo=Guid.NewGuid().ToString()+"/"+Guid.NewGuid().ToString()+".png";
+     var mobilePayload=Json.Map(new{name="Foto mobile",photo_path=photo,cost=10,price=25,variants=new[]{new VariantDraft{color="Preta",size="M",quantity=2}}});
+     var normalized=RealtimeBridge.ProductFromCommand(Guid.NewGuid().ToString(),mobilePayload);
+     Check("mobile cloud photo_path survives SIC command normalization",normalized.photo==photo&&!mobilePayload.ContainsKey("photo"));
+     var photographed=Units(store.CreateProduct(normalized));var photoCodes=photographed.Select(x=>Convert.ToString(x["barcode"])).ToArray();
+     var photoEdit=new EditDraft{request_id=Guid.NewGuid().ToString(),revision=1,name="Foto mobile",color="Preta",size="M",cost=10,price=25,photo=Guid.NewGuid().ToString()+"/"+Guid.NewGuid().ToString()+".jpg"};
+     store.Edit(photoCodes[0],photoEdit);store.Edit(photoCodes[0],photoEdit);
+     Check("photo replacement is shared and idempotent across physical units",photoCodes.All(code=>Convert.ToString(store.Lookup(code)["photo_path"])==photoEdit.photo&&Convert.ToInt64(store.Lookup(code)["revision"])==2));
+     photoEdit.request_id=Guid.NewGuid().ToString();photoEdit.revision=2;photoEdit.photo="";store.Edit(photoCodes[0],photoEdit);
+     Check("photo removal preserves codes and stock for every variant",photoCodes.All(code=>Convert.ToString(store.Lookup(code)["photo_path"])==""&&Convert.ToInt64(store.Lookup(code)["quantity"])==1&&Convert.ToInt64(store.Lookup(code)["revision"])==3));
+     var png=Convert.ToBase64String(new byte[]{137,80,78,71,13,10,26,10});ProductPhotos.Validate("image/png",png);
+     try{ProductPhotos.Validate("image/jpeg",png);throw new Exception("expected invalid photo");}catch(DomainError error){Check("photo MIME must agree with the file header",error.Code=="INVALID_PHOTO_TYPE");}
+     try{ProductPhotos.Path("https://example.com/photo.png");throw new Exception("expected invalid reference");}catch(DomainError error){Check("product image URLs never become stored references",error.Code=="INVALID_PHOTO");}
+     Check("original SIC database remains unchanged",original==Json.Write(Program.Probe(server)));
     }
     Console.WriteLine(Json.Write(new{passed=passed.Count,tests=passed,database,source_unchanged=true,mode="sandbox"}));return 0;
    }catch(Exception error){Console.Error.WriteLine(error.ToString());return 1;}

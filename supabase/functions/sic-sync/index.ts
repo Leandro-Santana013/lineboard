@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { json, sha256 } from "../_shared/http.ts";
 import { apiKey } from "../_shared/environment.ts";
+import { decodePhoto, MAX_PHOTO_REQUEST_BYTES, PhotoError, readBoundedBody, validPhotoPath } from "../_shared/product_photos.ts";
 
 // The desktop uses this endpoint for idempotent push and for a full snapshot
 // pull. Every enabled SIC installation may register without stealing another.
@@ -20,9 +21,23 @@ Deno.serve(async (req) => {
   }
   if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
   try {
-    const text = await req.text();
-    if (text.length > 1_048_576) return json({ error: "REQUEST_TOO_LARGE" }, 413);
+    const text = await readBoundedBody(req, MAX_PHOTO_REQUEST_BYTES);
     const event = JSON.parse(text);
+    if (!event || typeof event !== "object" || Array.isArray(event)) return json({ error: "INVALID_REQUEST" }, 400);
+    if (event.kind === "photo.upload") {
+      const photo = decodePhoto(event.content_type, event.data);
+      const path = `${org}/${crypto.randomUUID()}.${photo.extension}`;
+      const { error } = await admin.storage.from("product-photos").upload(path, photo.bytes, { contentType: photo.contentType, upsert: false });
+      if (error) return json({ error: "PHOTO_UPLOAD_FAILED" }, 502);
+      return json({ photo_path: path });
+    }
+    if (new TextEncoder().encode(text).length > 1_048_576) return json({ error: "REQUEST_TOO_LARGE" }, 413);
+    if (event.kind === "photo.url") {
+      if (!validPhotoPath(org, event.photo_path)) return json({ error: "INVALID_PHOTO" }, 400);
+      const { data, error } = await admin.storage.from("product-photos").createSignedUrl(event.photo_path, 300);
+      if (error) return json({ error: "PHOTO_NOT_FOUND" }, 404);
+      return json({ url: data.signedUrl });
+    }
     if (event.kind === "checkout.claim" || event.kind === "checkout.release") {
       const claiming = event.kind === "checkout.claim";
       const params = { p_hash: hash, p_instance: event.instance_id, p_request: event.request_id };
@@ -37,11 +52,12 @@ Deno.serve(async (req) => {
     }
     const { data, error } = await admin.rpc("apply_sic_event", { p_hash: hash, p_event: event });
     if (error) {
-      const known = ["IDEMPOTENCY_CONFLICT", "SANDBOX_NOT_ALLOWED", "SIC_CONNECTION_NOT_REGISTERED", "UNIT_NOT_IMPORTED", "SOURCE_CONFLICT", "INVALID_EVENT", "INVALID_UNIT", "INVALID_SALE", "ADMIN_REQUIRED", "CHECKOUT_IN_PROGRESS", "CHECKOUT_CLAIM_REQUIRED", "INSUFFICIENT_STOCK"];
+      const known = ["IDEMPOTENCY_CONFLICT", "SANDBOX_NOT_ALLOWED", "SIC_CONNECTION_NOT_REGISTERED", "UNIT_NOT_IMPORTED", "SOURCE_CONFLICT", "INVALID_EVENT", "INVALID_UNIT", "INVALID_SALE", "INVALID_PHOTO", "ADMIN_REQUIRED", "CHECKOUT_IN_PROGRESS", "CHECKOUT_CLAIM_REQUIRED", "INSUFFICIENT_STOCK"];
       return json({ error: known.find((code) => error.message.includes(code)) ?? "SYNC_EVENT_FAILED" }, 409);
     }
     return json(data);
-  } catch {
+  } catch (error) {
+    if (error instanceof PhotoError) return json({ error: error.message }, error.message === "REQUEST_TOO_LARGE" || error.message === "PHOTO_TOO_LARGE" ? 413 : 400);
     return json({ error: "INVALID_REQUEST" }, 400);
   }
 });

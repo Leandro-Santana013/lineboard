@@ -44,6 +44,50 @@ void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
   test(
+    'photo edits preserve omission and send explicit null for removal',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final requests = <Map<String, dynamic>>[];
+      final transport = MockClient((request) async {
+        expect(request.url.path, contains('/rpc/update_product'));
+        requests.add(Map<String, dynamic>.from(jsonDecode(request.body)));
+        return http.Response(
+          'null',
+          200,
+          headers: {'content-type': 'application/json'},
+        request: request,
+        );
+      });
+      final client = await sessionClient(transport);
+      final store = await PendingStore.open(path: inMemoryDatabasePath);
+      final repo = Repository(
+        client,
+        await SharedPreferences.getInstance(),
+        store,
+      );
+      final item = CatalogItem({
+        'organization_id': 'org-a',
+        'product_id': 'product-a',
+      });
+      await repo.updateProduct(item, {'name': 'Existing photo'});
+      await repo.updateProduct(item, {'photo_path': 'org-a/image.png'});
+      await repo.updateProduct(item, {'photo_path': null});
+      expect(
+        (requests[0]['p_fields'] as Map).containsKey('photo_path'),
+        isFalse,
+      );
+      expect(requests[1]['p_fields']['photo_path'], 'org-a/image.png');
+      expect(
+        (requests[2]['p_fields'] as Map).containsKey('photo_path'),
+        isTrue,
+      );
+      expect(requests[2]['p_fields']['photo_path'], isNull);
+      await store.database.close();
+      await client.dispose();
+      transport.close();
+    },
+  );
+  test(
     'pending requests survive SQLite close/reopen, scoped by user and store',
     () async {
       final directory = await Directory.systemTemp.createTemp(
