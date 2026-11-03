@@ -44,7 +44,7 @@ namespace Lineboard {
     api.Start();
     if(serve){Emit(args,Json.Write(new{address=api.Address,mode=production?"production":"sandbox",database}));new ManualResetEvent(false).WaitOne();return 0;}
     Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-    if(legacyUi){using(var form=new DesktopForm(store,api)){Application.Run(form);}}
+    if(legacyUi){using(var form=new DesktopForm(store,api,realtime)){Application.Run(form);}}
     else {using(var form=new WebDesktopForm(store,api,workspace,false,null,false,false,false,realtime)){Application.Run(form);}}
     return 0;
     }

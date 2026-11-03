@@ -15,6 +15,7 @@ namespace Lineboard {
   readonly SicStore store;
   readonly string socketAddress;
   readonly string restAddress;
+  readonly string connectionAddress;
   readonly string realtimeKey;
   readonly string instanceId;
   readonly string ackAddress;
@@ -23,9 +24,11 @@ namespace Lineboard {
   readonly object lifecycle=new object();
   readonly object commandGate=new object();
   readonly HashSet<string> activeCommands=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-  Task worker;
+  Task worker;int connected;
   public string State { get; private set; }
   public bool Configured { get; private set; }
+  public bool CommandsConfigured { get; private set; }
+  public event Action SharedCartChanged;
 
   public RealtimeBridge(SicStore store) {
    if(store==null)throw new ArgumentNullException("store");
@@ -35,14 +38,18 @@ namespace Lineboard {
    integrationToken=Environment.GetEnvironmentVariable("LINEBOARD_SYNC_TOKEN");
    var supabase=Environment.GetEnvironmentVariable("SUPABASE_URL");
    Uri supabaseUri;
-   restAddress=Uri.TryCreate(supabase,UriKind.Absolute,out supabaseUri)&&supabaseUri.Scheme=="https"?new Uri(supabaseUri,"rest/v1/sic_commands").ToString():null;
+   if(Uri.TryCreate(supabase,UriKind.Absolute,out supabaseUri)&&supabaseUri.Scheme=="https"){
+    restAddress=new Uri(supabaseUri,"rest/v1/sic_commands").ToString();
+    connectionAddress=new Uri(supabaseUri,"rest/v1/sic_connections").ToString();
+   } else {restAddress=null;connectionAddress=null;}
    var ack=Environment.GetEnvironmentVariable("LINEBOARD_REALTIME_ACK_URL");
    if(String.IsNullOrWhiteSpace(ack)) {
     Uri baseUri;
     if(Uri.TryCreate(supabase,UriKind.Absolute,out baseUri))ack=new Uri(baseUri,"functions/v1/sic-command-ack").ToString();
    }
    ackAddress=ack;
-   Configured=IsSocket(socketAddress)&&!String.IsNullOrWhiteSpace(realtimeKey)&&RegexToken(integrationToken)&&IsAckAddress(ackAddress);
+   Configured=IsSocket(socketAddress)&&!String.IsNullOrWhiteSpace(realtimeKey);
+   CommandsConfigured=Configured&&RegexToken(integrationToken)&&IsAckAddress(ackAddress);
    State=Configured?"waiting":"not_configured";
   }
 
@@ -66,15 +73,46 @@ namespace Lineboard {
   }
   Uri JoinUrl(){var separator=socketAddress.Contains("?")?"&":"?";return new Uri(socketAddress+separator+"apikey="+Uri.EscapeDataString(realtimeKey)+"&vsn=1.0.0");}
   async Task Join(ClientWebSocket socket){
-   var config=new Dictionary<string,object> {
+   if(CommandsConfigured){
+    var config=ChannelConfig(new[]{new Dictionary<string,object> {{"event","INSERT"},{"schema","public"},{"table","sic_commands"},{"filter","instance_id=eq."+instanceId}}});
+    await Send(socket,JoinMessage("realtime:public:sic_commands",config,"1"));
+   }
+   var organization=ResolveOrganization();
+   if(!String.IsNullOrWhiteSpace(organization)){
+    var config=ChannelConfig(new[]{
+     new Dictionary<string,object> {{"event","INSERT"},{"schema","public"},{"table","sic_shared_carts"},{"filter","organization_id=eq."+organization}},
+     new Dictionary<string,object> {{"event","UPDATE"},{"schema","public"},{"table","sic_shared_carts"},{"filter","organization_id=eq."+organization}}
+    });
+    await Send(socket,JoinMessage("realtime:public:sic_shared_carts",config,"2"));
+   }
+   Observe(Heartbeat(socket));
+   if(CommandsConfigured)CatchUp();
+   // Start() performs the initial snapshot. Later joins are reconnects and
+   // must reconcile once because events may have been missed while offline.
+   if(Interlocked.Exchange(ref connected,1)==1)NotifySharedCartChanged();
+  }
+  static Dictionary<string,object> ChannelConfig(IEnumerable<Dictionary<string,object>> changes){
+   return new Dictionary<string,object> {
     {"broadcast",new Dictionary<string,object> {{"ack",false},{"self",false}}},
     {"presence",new Dictionary<string,object> {{"key",""}}},
-    {"postgres_changes",new[]{new Dictionary<string,object> {{"event","INSERT"},{"schema","public"},{"table","sic_commands"},{"filter","instance_id=eq."+instanceId}}}}
+    {"postgres_changes",changes}
    };
+  }
+  Dictionary<string,object> JoinMessage(string topic,Dictionary<string,object> config,string reference){
    var payload=new Dictionary<string,object> {{"config",config},{"access_token",realtimeKey}};
-   await Send(socket,new Dictionary<string,object> {{"topic","realtime:public:sic_commands"},{"event","phx_join"},{"payload",payload},{"ref","1"}});
-   Observe(Heartbeat(socket));
-   CatchUp();
+   return new Dictionary<string,object> {{"topic",topic},{"event","phx_join"},{"payload",payload},{"ref",reference}};
+  }
+  string ResolveOrganization(){
+   if(String.IsNullOrWhiteSpace(connectionAddress))return null;
+   try{
+    var request=(HttpWebRequest)WebRequest.Create(connectionAddress+"?select=organization_id&instance_id=eq."+Uri.EscapeDataString(instanceId)+"&enabled=eq.true&limit=1");
+    request.Method="GET";request.AllowAutoRedirect=false;request.Timeout=15000;request.Headers["apikey"]=realtimeKey;request.Headers["Authorization"]="Bearer "+realtimeKey;
+    using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream())){
+     var rows=Json.Read<List<Dictionary<string,object>>>(reader.ReadToEnd());
+     if(rows.Count==0||!rows[0].ContainsKey("organization_id"))return null;
+     return Convert.ToString(rows[0]["organization_id"]);
+    }
+   }catch{return null;}
   }
   async Task Heartbeat(ClientWebSocket socket){
    while(socket.State==WebSocketState.Open&&!stop.IsCancellationRequested){
@@ -104,7 +142,9 @@ namespace Lineboard {
     var message=Json.Read<Dictionary<string,object>>(Encoding.UTF8.GetString(builder.ToArray()));
     if(String.Equals(Convert.ToString(message.ContainsKey("event")?message["event"]:null),"postgres_changes",StringComparison.Ordinal)) {
      var payload=message["payload"] as Dictionary<string,object>;var data=payload==null?null:payload["data"] as Dictionary<string,object>;var record=data==null?null:data["record"] as Dictionary<string,object>;
-      if(record!=null)Observe(ProcessAsync(record));
+      var table=data==null?null:Convert.ToString(data.ContainsKey("table")?data["table"]:null);
+      if(table=="sic_shared_carts"){NotifySharedCartChanged();continue;}
+      if(table=="sic_commands"&&record!=null&&CommandsConfigured)Observe(ProcessAsync(record));
     }
    }
   }
@@ -147,10 +187,11 @@ namespace Lineboard {
    return store.ConfirmLines(new ConfirmLinesDraft{request_id=requestId,lines=drafts,payment=payload.ContainsKey("payment")?Convert.ToString(payload["payment"]):"pix",fiscal_document=payload.ContainsKey("fiscal_document")?Convert.ToString(payload["fiscal_document"]):null,reference=payload.ContainsKey("reference")?Convert.ToString(payload["reference"]):null});
   }
   async Task Ack(string org,string command,string status,Dictionary<string,object> result,string error){
-   if(!Configured||String.IsNullOrWhiteSpace(ackAddress)||String.IsNullOrWhiteSpace(org)||String.IsNullOrWhiteSpace(command))return;
+   if(!CommandsConfigured||String.IsNullOrWhiteSpace(org)||String.IsNullOrWhiteSpace(command))return;
    try{var request=(HttpWebRequest)WebRequest.Create(ackAddress);request.Method="POST";request.AllowAutoRedirect=false;request.Timeout=15000;request.ContentType="application/json";request.Headers["Authorization"]="Bearer "+integrationToken;var bytes=Encoding.UTF8.GetBytes(Json.Write(new Dictionary<string,object>{{"organization_id",org},{"command_id",command},{"instance_id",instanceId},{"status",status},{"result",result},{"error_code",error}}));request.ContentLength=bytes.Length;using(var stream=request.GetRequestStream())await stream.WriteAsync(bytes,0,bytes.Length);using(var response=(HttpWebResponse)await request.GetResponseAsync())using(var reader=new StreamReader(response.GetResponseStream()))await reader.ReadToEndAsync();}
    catch{State="ack_pending";}
   }
+  void NotifySharedCartChanged(){try{var handler=SharedCartChanged;if(handler!=null)handler();}catch{State="sync_pending";}}
    public void Dispose(){stop.Cancel();try{if(worker!=null)worker.Wait(TimeSpan.FromSeconds(2));}catch{}stop.Dispose();}
  }
 }

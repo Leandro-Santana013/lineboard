@@ -42,6 +42,7 @@ namespace Lineboard {
    uiRoot=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui");
    if(!Directory.Exists(uiRoot)||!File.Exists(Path.Combine(uiRoot,"index.html")))throw new DomainError("UI_ASSETS_MISSING");
    sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);
+   if(this.realtime!=null)this.realtime.SharedCartChanged+=backgroundSync.Request;
    Text="Lineboard • Loja e estoque • Laboratório";Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);StartPosition=FormStartPosition.CenterScreen;ClientSize=new Size(1224,794);MinimumSize=new Size(1180,740);if(largeCapture)ClientSize=new Size(1400,960);
    if(preview){ShowInTaskbar=false;WindowState=FormWindowState.Normal;}
    Controls.Add(webView);
@@ -264,6 +265,6 @@ namespace Lineboard {
     await webView.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,stream);
   }
 
-  void OnClosed(object sender,FormClosedEventArgs args) { backgroundSync.Dispose();api.Dispose(); }
+  void OnClosed(object sender,FormClosedEventArgs args) { if(realtime!=null)realtime.SharedCartChanged-=backgroundSync.Request;backgroundSync.Dispose();api.Dispose(); }
  }
 }

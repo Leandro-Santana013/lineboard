@@ -33,6 +33,13 @@ cd mobile
 flutter run --dart-define=LINEBOARD_MODE=cloud --dart-define-from-file=config.json
 ```
 
+## Adaptador Linux
+
+O cliente Linux fica em [linux/README.md](linux/README.md). Ele autentica uma
+instalação cloud, importa o snapshot por `sic-sync` e reage ao Supabase Realtime
+sem polling. Por enquanto é um adaptador cloud/read-only: o conector SICNET,
+escrita fiscal e confirmação de venda continuam no desktop Windows.
+
 No modo de producao, cada cadastro e venda entra diretamente no `SICNET` local
 em uma transacao atomica; a importacao inicial dos produtos nao e repetida para
 as operacoes novas.

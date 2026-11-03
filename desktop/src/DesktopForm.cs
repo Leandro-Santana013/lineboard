@@ -8,7 +8,7 @@ using System.Windows.Forms;
 
 namespace Lineboard {
  public sealed class DesktopForm : Form {
-  readonly SicStore store; readonly LocalApi api; readonly CloudSync sync;readonly BackgroundSync backgroundSync; readonly DataGridView inventory=Grid();
+  readonly SicStore store; readonly LocalApi api; readonly CloudSync sync;readonly BackgroundSync backgroundSync;readonly RealtimeBridge realtime; readonly DataGridView inventory=Grid();
   readonly Label status=DesktopTheme.Label("Operação local",8.5f,DesktopTheme.Muted),catalogCount=DesktopTheme.Label(""),cartCount=DesktopTheme.Label(""),total=DesktopTheme.Label("R$ 0,00",23,DesktopTheme.Ink,FontStyle.Bold),pieceCount=DesktopTheme.Label("0 peças",9,DesktopTheme.Muted),selection=DesktopTheme.Label("Selecione uma peça",8.5f,DesktopTheme.Muted);
   readonly ComboBox payment=new ComboBox {DropDownStyle=ComboBoxStyle.DropDownList,Dock=DockStyle.Fill};
   readonly ComboBox stockFilter=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Dock=DockStyle.Fill};
@@ -20,8 +20,8 @@ namespace Lineboard {
   HashSet<string> cartCodes=new HashSet<string>();
   readonly System.Windows.Forms.Timer refreshTimer=new System.Windows.Forms.Timer {Interval=1800};
   long cartVersion=-1; string pendingConfirmation; ConfirmDraft pendingDraft; string inventorySignature="";bool renderingPreview;
-  public DesktopForm(SicStore store,LocalApi api){
-   this.store=store;this.api=api;sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);DesktopTheme.Form(this);Text="Lineboard • Loja e estoque • Laboratório";
+  public DesktopForm(SicStore store,LocalApi api,RealtimeBridge realtime=null){
+   this.store=store;this.api=api;this.realtime=realtime;sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);if(this.realtime!=null)this.realtime.SharedCartChanged+=backgroundSync.Request;DesktopTheme.Form(this);Text="Lineboard • Loja e estoque • Laboratório";
    Size=new Size(1360,880);MinimumSize=new Size(1180,740);StartPosition=FormStartPosition.CenterScreen;KeyPreview=true;DoubleBuffered=true;
    var area=Screen.FromControl(this).WorkingArea;Size=new Size(Math.Min(Width,area.Width),Math.Min(Height,area.Height));
    var shell=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,Margin=Padding.Empty};shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,204));shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));shell.RowStyles.Add(new RowStyle(SizeType.Percent,100));Controls.Add(shell);
@@ -39,7 +39,7 @@ namespace Lineboard {
    search.TextChanged+=(s,e)=>BindInventory();stockFilter.SelectedIndexChanged+=(s,e)=>BindInventory();
    KeyDown+=(s,e)=>{if(e.Control&&e.KeyCode==Keys.F){search.Focus();search.SelectAll();e.SuppressKeyPress=true;}};
    refreshTimer.Tick+=(s,e)=>{try{RefreshData();}catch(Exception){status.Text="Não foi possível atualizar a tela. Tente novamente.";}};
-   Shown+=(s,e)=>{RefreshData();refreshTimer.Start();if(!renderingPreview)backgroundSync.Start();};FormClosed+=(s,e)=>{refreshTimer.Stop();refreshTimer.Dispose();backgroundSync.Dispose();api.Dispose();};
+   Shown+=(s,e)=>{RefreshData();refreshTimer.Start();if(!renderingPreview)backgroundSync.Start();};FormClosed+=(s,e)=>{refreshTimer.Stop();refreshTimer.Dispose();if(realtime!=null)realtime.SharedCartChanged-=backgroundSync.Request;backgroundSync.Dispose();api.Dispose();};
   }
   Control BuildSidebar(){
    var sidebar=DesktopTheme.Rows(220,34,46,46,46,-1,46,44);sidebar.BackColor=DesktopTheme.Sidebar;sidebar.Padding=new Padding(12,14,12,4);
