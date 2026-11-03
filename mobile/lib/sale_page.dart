@@ -25,7 +25,7 @@ class _SalePageState extends State<SalePage> {
   bool busy = false;
   bool? shared;
   List<CatalogItem> sharedItems = [];
-  Timer? refreshTimer;
+  RealtimeChannel? sharedChannel;
   bool refreshing = false;
   String? sharedMessage;
   @override
@@ -45,14 +45,29 @@ class _SalePageState extends State<SalePage> {
       });
       if (value) {
         await refreshShared();
-        refreshTimer = Timer.periodic(
-          const Duration(seconds: 3),
-          (_) => refreshShared(),
-        );
+        subscribeToSharedCart();
       }
     } catch (e) {
       if (mounted) setState(() => error = friendlyError(e));
     }
+  }
+
+  void subscribeToSharedCart() {
+    if (sharedChannel != null) return;
+    final channel = widget.repo.client.channel('sic-shared-cart-${widget.org}');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'sic_shared_carts',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'organization_id',
+        value: widget.org,
+      ),
+      callback: (_) => refreshShared(),
+    );
+    sharedChannel = channel;
+    channel.subscribe();
   }
 
   Future<void> refreshShared() async {
@@ -99,7 +114,8 @@ class _SalePageState extends State<SalePage> {
 
   @override
   void dispose() {
-    refreshTimer?.cancel();
+    final channel = sharedChannel;
+    if (channel != null) unawaited(widget.repo.client.removeChannel(channel));
     reference.dispose();
     super.dispose();
   }

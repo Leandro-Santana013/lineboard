@@ -100,9 +100,10 @@ navegar para outra área; **Cancelar** descarta os dados não cadastrados.
    silêncio, para imprimir ou salvar em PDF pelo navegador. Tamanho inicial
    50 × 30 mm. O equipamento e o formato físico ainda serão definidos pela loja.
 7. **Atualização automática**: eventos persistentes são enviados em segundo plano
-   imediatamente após cada transação confirmada, ao abrir o aplicativo e novamente
-   a cada 30 segundos para reconciliação/retry, quando a integração estiver
-   configurada. Falhas preservam os eventos para a próxima tentativa;
+   imediatamente após cada transação confirmada e ao abrir o aplicativo. Mudanças
+   externas do carrinho chegam pelo Supabase Realtime e disparam uma única
+   reconciliação; falhas usam somente retry do evento que falhou, sem leitura
+   periódica do banco. Falhas preservam os eventos para a próxima tentativa;
    conflitos interrompem o envio. Nenhuma ação de sincronização é exigida do
    operador. O estado da configuração fica em **Configurações**; o diagnóstico
    detalhado continua disponível pela CLI (`--health` e `--export-outbox`).
@@ -178,8 +179,9 @@ O servidor deriva a organização da credencial e registra cada instalação da 
 Todos os computadores dessa organização leem o mesmo estoque e o mesmo carrinho
 persistido no Supabase. O celular envia a leitura ao carrinho da loja sem escolher
 um computador; a leitura não baixa estoque. A confirmação final é feita no desktop.
-Os desktops consultam o estado central a cada 5 segundos, e as alterações locais
-disparam envio imediato. Computadores fechados recuperam o estado ao abrir.
+Os desktops recebem pelo Supabase Realtime o evento de mudança do carrinho central;
+cada evento dispara uma reconciliação única, enquanto alterações locais disparam
+envio imediato. Computadores fechados recuperam o estado ao abrir ou ao reconectar.
 
 O novo aplicativo mobile inclui uma ação para encaminhar ao carrinho compartilhado
 os itens de uma tentativa antiga que exibia `DESKTOP_CONFIRMATION_REQUIRED`.
@@ -201,11 +203,11 @@ Se o saldo da nuvem já mudou, o evento fica em conflito e interrompe a fila;
 não ressuscita estoque nem repete uma venda. Os dados financeiros e fiscais por
 peça ficam em `sic_unit_links.snapshot`, protegidos por RLS, e não são públicos.
 
-O carrinho compartilhado usa as RPCs `read_sic_cart` e `update_sic_cart` no celular
-e o snapshot autenticado da Edge Function `sic-sync` nos desktops. Este fluxo
-não depende das variáveis opcionais `LINEBOARD_REALTIME_*`: o recebimento automático
-funciona com o pareamento cloud já instalado. O intervalo de leitura é 5 segundos;
-não há servidor Socket.IO neste projeto.
+O carrinho compartilhado continua usando as RPCs `read_sic_cart` e `update_sic_cart`
+no celular e o snapshot autenticado da Edge Function `sic-sync` nos desktops. O
+Realtime apenas sinaliza que a versão mudou; ele não substitui nem duplica a
+fonte canônica. Para receber mudanças externas sem polling, o desktop precisa das
+variáveis `LINEBOARD_REALTIME_*` configuradas no Windows.
 
 A ponte opcional de comandos `sic_commands`/Supabase Realtime continua disponível
 para comandos direcionados, como cadastro pelo adaptador, com resposta pela Edge
