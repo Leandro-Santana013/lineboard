@@ -26,7 +26,9 @@ class _SalePageState extends State<SalePage> {
   bool? shared;
   List<CatalogItem> sharedItems = [];
   RealtimeChannel? sharedChannel;
+  Timer? sharedReconnectTimer;
   bool refreshing = false;
+  bool refreshQueued = false;
   String? sharedMessage;
   @override
   void initState() {
@@ -53,7 +55,7 @@ class _SalePageState extends State<SalePage> {
   }
 
   void subscribeToSharedCart() {
-    if (sharedChannel != null) return;
+    if (!mounted || sharedChannel != null || sharedReconnectTimer != null) return;
     final channel = widget.repo.client.channel('sic-shared-cart-${widget.org}');
     channel.onPostgresChanges(
       event: PostgresChangeEvent.all,
@@ -67,11 +69,39 @@ class _SalePageState extends State<SalePage> {
       callback: (_) => refreshShared(),
     );
     sharedChannel = channel;
-    channel.subscribe();
+    channel.subscribe((status, [error]) {
+      if (!mounted || sharedChannel != channel) return;
+      switch (status) {
+        case RealtimeSubscribeStatus.subscribed:
+          unawaited(refreshShared());
+          break;
+        case RealtimeSubscribeStatus.channelError:
+        case RealtimeSubscribeStatus.closed:
+        case RealtimeSubscribeStatus.timedOut:
+          _scheduleSharedReconnect(channel, error);
+          break;
+      }
+    });
+  }
+
+  void _scheduleSharedReconnect(RealtimeChannel channel, Object? error) {
+    if (!mounted || sharedChannel != channel || sharedReconnectTimer != null) {
+      return;
+    }
+    sharedChannel = null;
+    unawaited(widget.repo.client.removeChannel(channel));
+    sharedReconnectTimer = Timer(const Duration(seconds: 2), () {
+      sharedReconnectTimer = null;
+      if (mounted && shared == true) subscribeToSharedCart();
+    });
   }
 
   Future<void> refreshShared() async {
-    if (refreshing || !mounted) return;
+    if (!mounted) return;
+    if (refreshing) {
+      refreshQueued = true;
+      return;
+    }
     refreshing = true;
     try {
       final cart = await widget.repo.sharedCart(widget.org);
@@ -87,6 +117,10 @@ class _SalePageState extends State<SalePage> {
       if (mounted) setState(() => error = friendlyError(e));
     } finally {
       refreshing = false;
+      if (refreshQueued && mounted) {
+        refreshQueued = false;
+        unawaited(refreshShared());
+      }
     }
   }
 
@@ -114,6 +148,8 @@ class _SalePageState extends State<SalePage> {
 
   @override
   void dispose() {
+    sharedReconnectTimer?.cancel();
+    sharedReconnectTimer = null;
     final channel = sharedChannel;
     if (channel != null) unawaited(widget.repo.client.removeChannel(channel));
     reference.dispose();

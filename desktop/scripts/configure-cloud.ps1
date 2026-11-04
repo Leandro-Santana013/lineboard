@@ -60,18 +60,50 @@ if ($token -cnotmatch '^slb_live_[a-f0-9]{64}$') {
     throw 'Token invalido. Ele deve seguir o formato slb_live_ mais 64 caracteres hexadecimais.'
 }
 
+$projectUrl = $uri.GetLeftPart([UriPartial]::Authority)
+$realtimeUrl = 'wss://' + $uri.Host + '/realtime/v1/websocket'
+$realtimeKey = [Environment]::GetEnvironmentVariable('LINEBOARD_REALTIME_KEY', [EnvironmentVariableTarget]::Machine)
+if (-not $realtimeKey) { $realtimeKey = [Environment]::GetEnvironmentVariable('LINEBOARD_REALTIME_KEY', [EnvironmentVariableTarget]::User) }
+if ([string]::IsNullOrWhiteSpace($realtimeKey)) {
+    $secureRealtimeKey = Read-Host 'Cole a chave privada do Supabase Realtime (nao sera exibida)' -AsSecureString
+    $realtimeKey = $null
+    $pointer = [IntPtr]::Zero
+    try {
+        $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureRealtimeKey)
+        $realtimeKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+    }
+    finally {
+        if ($pointer -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+        }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($realtimeKey)) {
+    throw 'A chave privada do Supabase Realtime e obrigatoria para atualizar o carrinho somente por eventos.'
+}
+
 [Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_URL', $SyncUrl, [EnvironmentVariableTarget]::Machine)
 [Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', $token, [EnvironmentVariableTarget]::Machine)
 [Environment]::SetEnvironmentVariable('LINEBOARD_SIC_SERVER', $configuredServer, [EnvironmentVariableTarget]::Machine)
+[Environment]::SetEnvironmentVariable('SUPABASE_URL', $projectUrl, [EnvironmentVariableTarget]::Machine)
+[Environment]::SetEnvironmentVariable('LINEBOARD_REALTIME_URL', $realtimeUrl, [EnvironmentVariableTarget]::Machine)
+[Environment]::SetEnvironmentVariable('LINEBOARD_REALTIME_KEY', $realtimeKey, [EnvironmentVariableTarget]::Machine)
 # Remove duplicatas antigas do perfil para que nenhum valor antigo tenha precedencia.
 [Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_URL', $null, [EnvironmentVariableTarget]::User)
 [Environment]::SetEnvironmentVariable('LINEBOARD_SYNC_TOKEN', $null, [EnvironmentVariableTarget]::User)
 [Environment]::SetEnvironmentVariable('LINEBOARD_SIC_SERVER', $null, [EnvironmentVariableTarget]::User)
+[Environment]::SetEnvironmentVariable('SUPABASE_URL', $null, [EnvironmentVariableTarget]::User)
+[Environment]::SetEnvironmentVariable('LINEBOARD_REALTIME_URL', $null, [EnvironmentVariableTarget]::User)
+[Environment]::SetEnvironmentVariable('LINEBOARD_REALTIME_KEY', $null, [EnvironmentVariableTarget]::User)
 # O processo atual nao recebe automaticamente as variaveis recem-gravadas no Windows.
 $env:LINEBOARD_SYNC_URL = $SyncUrl
 $env:LINEBOARD_SYNC_TOKEN = $token
 $env:LINEBOARD_SIC_SERVER = $configuredServer
+$env:SUPABASE_URL = $projectUrl
+$env:LINEBOARD_REALTIME_URL = $realtimeUrl
+$env:LINEBOARD_REALTIME_KEY = $realtimeKey
 $token = $null
+$realtimeKey = $null
 Write-Host ('Configuracao cloud salva para todos os usuarios desta maquina. SIC server: {0}' -f $configuredServer)
 
 if ($SkipInitialSync) {

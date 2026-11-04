@@ -15,7 +15,7 @@ namespace Lineboard {
   readonly SicStore store;
   readonly string socketAddress;
   readonly string restAddress;
-  readonly string connectionAddress;
+  readonly string syncAddress;
   readonly string realtimeKey;
   readonly string instanceId;
   readonly string ackAddress;
@@ -26,6 +26,7 @@ namespace Lineboard {
   readonly HashSet<string> activeCommands=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
   Task worker;int connected;
   public string State { get; private set; }
+  public string LastError { get; private set; }
   public bool Configured { get; private set; }
   public bool CommandsConfigured { get; private set; }
   public event Action SharedCartChanged;
@@ -33,16 +34,18 @@ namespace Lineboard {
   public RealtimeBridge(SicStore store) {
    if(store==null)throw new ArgumentNullException("store");
    this.store=store;instanceId=store.InstanceId;
-   socketAddress=Environment.GetEnvironmentVariable("LINEBOARD_REALTIME_URL");
-   realtimeKey=Environment.GetEnvironmentVariable("LINEBOARD_REALTIME_KEY");
-   integrationToken=Environment.GetEnvironmentVariable("LINEBOARD_SYNC_TOKEN");
-   var supabase=Environment.GetEnvironmentVariable("SUPABASE_URL");
+   socketAddress=Env("LINEBOARD_REALTIME_URL");
+   realtimeKey=Env("LINEBOARD_REALTIME_KEY");
+   integrationToken=Env("LINEBOARD_SYNC_TOKEN");
+   var supabase=Env("SUPABASE_URL");
    Uri supabaseUri;
+   var sync=Env("LINEBOARD_SYNC_URL");
+   Uri syncUri;
+   syncAddress=Uri.TryCreate(sync,UriKind.Absolute,out syncUri)&&syncUri.Scheme=="https"?syncUri.ToString():null;
    if(Uri.TryCreate(supabase,UriKind.Absolute,out supabaseUri)&&supabaseUri.Scheme=="https"){
     restAddress=new Uri(supabaseUri,"rest/v1/sic_commands").ToString();
-    connectionAddress=new Uri(supabaseUri,"rest/v1/sic_connections").ToString();
-   } else {restAddress=null;connectionAddress=null;}
-   var ack=Environment.GetEnvironmentVariable("LINEBOARD_REALTIME_ACK_URL");
+   } else {restAddress=null;}
+   var ack=Env("LINEBOARD_REALTIME_ACK_URL");
    if(String.IsNullOrWhiteSpace(ack)) {
     Uri baseUri;
     if(Uri.TryCreate(supabase,UriKind.Absolute,out baseUri))ack=new Uri(baseUri,"functions/v1/sic-command-ack").ToString();
@@ -53,6 +56,14 @@ namespace Lineboard {
    State=Configured?"waiting":"not_configured";
   }
 
+  static string Env(string name){
+   var value=Environment.GetEnvironmentVariable(name);
+   if(!String.IsNullOrWhiteSpace(value))return value;
+   value=Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.User);
+   if(!String.IsNullOrWhiteSpace(value))return value;
+   return Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.Machine);
+  }
+
   static bool IsSocket(string value){Uri uri;return Uri.TryCreate(value,UriKind.Absolute,out uri)&&(uri.Scheme=="wss"||uri.Scheme=="ws")&&uri.AbsolutePath=="/realtime/v1/websocket"&&String.IsNullOrEmpty(uri.UserInfo)&&String.IsNullOrEmpty(uri.Query)&&String.IsNullOrEmpty(uri.Fragment);}
   static bool IsAckAddress(string value){Uri uri;return Uri.TryCreate(value,UriKind.Absolute,out uri)&&uri.Scheme=="https"&&uri.Host.EndsWith(".supabase.co",StringComparison.OrdinalIgnoreCase)&&uri.AbsolutePath=="/functions/v1/sic-command-ack"&&String.IsNullOrEmpty(uri.UserInfo)&&String.IsNullOrEmpty(uri.Query)&&String.IsNullOrEmpty(uri.Fragment);}
   static bool RegexToken(string value){return !String.IsNullOrWhiteSpace(value)&&System.Text.RegularExpressions.Regex.IsMatch(value,@"^slb_live_[a-f0-9]{64}$");}
@@ -60,10 +71,10 @@ namespace Lineboard {
 
   async Task RunAsync(){
    while(!stop.IsCancellationRequested){
-    var retry=false;
-    try{State="connecting";using(var socket=new ClientWebSocket()){socket.Options.KeepAliveInterval=TimeSpan.FromSeconds(20);await socket.ConnectAsync(JoinUrl(),stop.Token);await Join(socket);State="listening";await Receive(socket);}}
-    catch(OperationCanceledException){break;}
-    catch(Exception){State="retrying";retry=true;}
+    var retry=false;var phase="connecting";
+    try{ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;State=phase;using(var socket=new ClientWebSocket()){socket.Options.KeepAliveInterval=TimeSpan.FromSeconds(20);await socket.ConnectAsync(JoinUrl(),stop.Token);phase="joining";State=phase;await Join(socket);phase="listening";State=phase;await Receive(socket);}}
+    catch(OperationCanceledException){if(stop.IsCancellationRequested)break;LastError="REALTIME_JOIN_TIMEOUT";State="retrying";retry=true;}
+    catch(Exception error){LastError=phase+": "+SafeError(error);State="retrying";retry=true;}
     if(retry){
      try{await Task.Delay(TimeSpan.FromSeconds(10),stop.Token);}
      catch(OperationCanceledException){break;}
@@ -71,25 +82,68 @@ namespace Lineboard {
    }
    State="stopped";
   }
+  string SafeError(Exception error){
+   var details=new StringBuilder();for(var current=error;current!=null;current=current.InnerException){if(details.Length>0)details.Append(" <- ");details.Append(current.GetType().Name).Append(": ").Append(current.Message);}
+   return SafeErrorText(details.ToString());
+  }
+  string SafeErrorText(string message){
+   if(!String.IsNullOrEmpty(realtimeKey)){message=message.Replace(realtimeKey,"[redacted]").Replace(Uri.EscapeDataString(realtimeKey),"[redacted]");}
+   if(!String.IsNullOrEmpty(integrationToken))message=message.Replace(integrationToken,"[redacted]");
+   if(message.Length>512)message=message.Substring(0,512);
+   return message;
+  }
+  string SystemError(Dictionary<string,object> systemPayload,string topic){
+   var detail=new StringBuilder("REALTIME_SUBSCRIPTION_REJECTED channel=").Append(topic);
+   if(systemPayload!=null){foreach(var field in new[]{"message","code","details","hint"}){object value;if(systemPayload.TryGetValue(field,out value)&&value!=null)detail.Append(" ").Append(field).Append("=").Append(Convert.ToString(value));}}
+   return SafeErrorText(detail.ToString());
+  }
   Uri JoinUrl(){var separator=socketAddress.Contains("?")?"&":"?";return new Uri(socketAddress+separator+"apikey="+Uri.EscapeDataString(realtimeKey)+"&vsn=1.0.0");}
   async Task Join(ClientWebSocket socket){
    if(CommandsConfigured){
     var config=ChannelConfig(new[]{new Dictionary<string,object> {{"event","INSERT"},{"schema","public"},{"table","sic_commands"},{"filter","instance_id=eq."+instanceId}}});
-    await Send(socket,JoinMessage("realtime:public:sic_commands",config,"1"));
+    try{await JoinChannel(socket,"realtime:public:sic_commands",config,"1",1);}
+    catch(DomainError){/* Command delivery is optional; the shared cart must still subscribe. */}
    }
    var organization=ResolveOrganization();
-   if(!String.IsNullOrWhiteSpace(organization)){
-    var config=ChannelConfig(new[]{
-     new Dictionary<string,object> {{"event","INSERT"},{"schema","public"},{"table","sic_shared_carts"},{"filter","organization_id=eq."+organization}},
-     new Dictionary<string,object> {{"event","UPDATE"},{"schema","public"},{"table","sic_shared_carts"},{"filter","organization_id=eq."+organization}}
-    });
-    await Send(socket,JoinMessage("realtime:public:sic_shared_carts",config,"2"));
-   }
+   if(String.IsNullOrWhiteSpace(organization))throw new DomainError("SIC_ORGANIZATION_UNRESOLVED");
+   var cartConfig=ChannelConfig(new[]{
+    new Dictionary<string,object> {{"event","INSERT"},{"schema","public"},{"table","sic_shared_carts"},{"filter","organization_id=eq."+organization}},
+    new Dictionary<string,object> {{"event","UPDATE"},{"schema","public"},{"table","sic_shared_carts"},{"filter","organization_id=eq."+organization}}
+   });
+   await JoinChannel(socket,"realtime:public:sic_shared_carts",cartConfig,"2",2);
    Observe(Heartbeat(socket));
    if(CommandsConfigured)CatchUp();
    // Start() performs the initial snapshot. Later joins are reconnects and
    // must reconcile once because events may have been missed while offline.
-   if(Interlocked.Exchange(ref connected,1)==1)NotifySharedCartChanged();
+   // Reconcile on the first successful join as well as on reconnects. The
+   // initial desktop snapshot can finish before this socket is ready, so a
+   // first-join notification closes that race without introducing polling.
+   Interlocked.Exchange(ref connected,1);
+   LastError=null;
+   NotifySharedCartChanged();
+  }
+  async Task JoinChannel(ClientWebSocket socket,string topic,Dictionary<string,object> config,string reference,int expectedBindings){
+   await Send(socket,JoinMessage(topic,config,reference));
+   using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(stop.Token)){
+    timeout.CancelAfter(TimeSpan.FromSeconds(15));
+    while(!timeout.IsCancellationRequested){
+     var message=await ReceiveMessage(socket,timeout.Token);
+     var eventName=Convert.ToString(message.ContainsKey("event")?message["event"]:null);
+     if(eventName=="system"){
+      var systemPayload=message.ContainsKey("payload")?message["payload"] as Dictionary<string,object>:null;
+      if(systemPayload!=null&&String.Equals(Convert.ToString(systemPayload.ContainsKey("status")?systemPayload["status"]:null),"error",StringComparison.OrdinalIgnoreCase))throw new DomainError(SystemError(systemPayload,topic));
+      continue;
+     }
+     if(eventName!="phx_reply"||!String.Equals(Convert.ToString(message.ContainsKey("ref")?message["ref"]:null),reference,StringComparison.Ordinal))continue;
+     var payload=message.ContainsKey("payload")?message["payload"] as Dictionary<string,object>:null;
+     if(payload==null||!String.Equals(Convert.ToString(payload.ContainsKey("status")?payload["status"]:null),"ok",StringComparison.OrdinalIgnoreCase))throw new DomainError("REALTIME_JOIN_REJECTED");
+     var response=payload.ContainsKey("response")?payload["response"] as Dictionary<string,object>:null;
+     var bindings=response!=null&&response.ContainsKey("postgres_changes")?response["postgres_changes"] as System.Collections.IList:null;
+     if(bindings==null||bindings.Count!=expectedBindings)throw new DomainError("REALTIME_BINDING_MISMATCH");
+     return;
+    }
+   }
+   throw new DomainError("REALTIME_JOIN_TIMEOUT");
   }
   static Dictionary<string,object> ChannelConfig(IEnumerable<Dictionary<string,object>> changes){
    return new Dictionary<string,object> {
@@ -99,18 +153,22 @@ namespace Lineboard {
    };
   }
   Dictionary<string,object> JoinMessage(string topic,Dictionary<string,object> config,string reference){
-   var payload=new Dictionary<string,object> {{"config",config},{"access_token",realtimeKey}};
+   // New Supabase sb_secret_* keys authenticate through the apikey query
+   // parameter. They are not JWT access tokens and must not be sent as
+   // access_token in the Realtime payload. A session JWT can be supplied by
+   // a user-facing client, but this desktop adapter intentionally uses the
+   // server key only.
+   var payload=new Dictionary<string,object> {{"config",config}};
    return new Dictionary<string,object> {{"topic",topic},{"event","phx_join"},{"payload",payload},{"ref",reference}};
   }
   string ResolveOrganization(){
-   if(String.IsNullOrWhiteSpace(connectionAddress))return null;
+   if(String.IsNullOrWhiteSpace(syncAddress)||!RegexToken(integrationToken))return null;
    try{
-    var request=(HttpWebRequest)WebRequest.Create(connectionAddress+"?select=organization_id&instance_id=eq."+Uri.EscapeDataString(instanceId)+"&enabled=eq.true&limit=1");
-    request.Method="GET";request.AllowAutoRedirect=false;request.Timeout=15000;request.Headers["apikey"]=realtimeKey;request.Headers["Authorization"]="Bearer "+realtimeKey;
+    var request=(HttpWebRequest)WebRequest.Create(syncAddress+"?instance_id="+Uri.EscapeDataString(instanceId));
+    request.Method="GET";request.AllowAutoRedirect=false;request.Timeout=15000;request.Headers["Authorization"]="Bearer "+integrationToken;
     using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream())){
-     var rows=Json.Read<List<Dictionary<string,object>>>(reader.ReadToEnd());
-     if(rows.Count==0||!rows[0].ContainsKey("organization_id"))return null;
-     return Convert.ToString(rows[0]["organization_id"]);
+     var snapshot=Json.Read<Dictionary<string,object>>(reader.ReadToEnd());
+     return snapshot.ContainsKey("organization_id")?Convert.ToString(snapshot["organization_id"]):null;
     }
    }catch{return null;}
   }
@@ -135,17 +193,26 @@ namespace Lineboard {
    }catch{ State="listening"; }
   }
   async Task Receive(ClientWebSocket socket){
-   var buffer=new byte[128*1024];var builder=new MemoryStream();
    while(socket.State==WebSocketState.Open&&!stop.IsCancellationRequested){
-    builder.SetLength(0);WebSocketReceiveResult part;
-    do{part=await socket.ReceiveAsync(new ArraySegment<byte>(buffer),stop.Token);if(part.MessageType==WebSocketMessageType.Close)return;builder.Write(buffer,0,part.Count);}while(!part.EndOfMessage);
-    var message=Json.Read<Dictionary<string,object>>(Encoding.UTF8.GetString(builder.ToArray()));
-    if(String.Equals(Convert.ToString(message.ContainsKey("event")?message["event"]:null),"postgres_changes",StringComparison.Ordinal)) {
+    var message=await ReceiveMessage(socket,stop.Token);var eventName=Convert.ToString(message.ContainsKey("event")?message["event"]:null);
+    if(eventName=="system"){
+     var systemPayload=message.ContainsKey("payload")?message["payload"] as Dictionary<string,object>:null;
+     if(systemPayload!=null&&String.Equals(Convert.ToString(systemPayload.ContainsKey("status")?systemPayload["status"]:null),"error",StringComparison.OrdinalIgnoreCase))throw new DomainError(SystemError(systemPayload,Convert.ToString(message.ContainsKey("topic")?message["topic"]:null)));
+     continue;
+    }
+    if(String.Equals(eventName,"postgres_changes",StringComparison.Ordinal)) {
      var payload=message["payload"] as Dictionary<string,object>;var data=payload==null?null:payload["data"] as Dictionary<string,object>;var record=data==null?null:data["record"] as Dictionary<string,object>;
       var table=data==null?null:Convert.ToString(data.ContainsKey("table")?data["table"]:null);
       if(table=="sic_shared_carts"){NotifySharedCartChanged();continue;}
       if(table=="sic_commands"&&record!=null&&CommandsConfigured)Observe(ProcessAsync(record));
     }
+   }
+  }
+  async Task<Dictionary<string,object>> ReceiveMessage(ClientWebSocket socket,CancellationToken token){
+   var buffer=new byte[128*1024];using(var builder=new MemoryStream()){
+    WebSocketReceiveResult part;
+    do{part=await socket.ReceiveAsync(new ArraySegment<byte>(buffer),token);if(part.MessageType==WebSocketMessageType.Close)throw new IOException("REALTIME_SOCKET_CLOSED");builder.Write(buffer,0,part.Count);}while(!part.EndOfMessage);
+    return Json.Read<Dictionary<string,object>>(Encoding.UTF8.GetString(builder.ToArray()));
    }
   }
   async Task Send(ClientWebSocket socket,object value){var bytes=Encoding.UTF8.GetBytes(Json.Write(value));await socket.SendAsync(new ArraySegment<byte>(bytes),WebSocketMessageType.Text,true,stop.Token);}

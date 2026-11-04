@@ -13,6 +13,10 @@ function isHostAvailable() {
 
 function onHostMessage(event) {
   const message = event && event.data;
+  if (message && message.type === 'lineboard_sync_completed') {
+    window.dispatchEvent(new Event('lineboard_sync_completed'));
+    return;
+  }
   if (!message || !message.id || !pending.has(message.id)) return;
   const request = pending.get(message.id);
   pending.delete(message.id);

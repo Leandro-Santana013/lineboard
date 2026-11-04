@@ -18,6 +18,13 @@ namespace Lineboard {
     var production=explicitProduction||!explicitDatabase;
     if(explicitProduction&&Array.IndexOf(args,"--confirm-production")<0)throw new DomainError("PRODUCTION_CONFIRM_REQUIRED");
     var store=new SicStore(server,database,workspace,production);
+    if(Array.IndexOf(args,"--realtime-health")>=0){
+     using(var realtimeProbe=new RealtimeBridge(store)){
+      realtimeProbe.Start();var deadline=DateTime.UtcNow.AddSeconds(20);
+      while(DateTime.UtcNow<deadline&&(realtimeProbe.State=="waiting"||realtimeProbe.State=="connecting"||realtimeProbe.State=="joining"))Thread.Sleep(100);
+      var state=realtimeProbe.State;Emit(args,Json.Write(new{configured=realtimeProbe.Configured,state=state,error=realtimeProbe.LastError,instance_id=store.InstanceId}));return state=="listening"?0:1;
+     }
+    }
     if(Array.IndexOf(args,"--sync-now")>=0){try{var sync=new CloudSync(store);Emit(args,Json.Write(sync.Reconcile()));return 0;}catch(Exception error){ErrorFile(args,error.Message);throw;}}
     if(Array.IndexOf(args,"--self-test")>=0){Emit(args,Json.Write(SelfTests.Run(store,server,workspace)));return 0;}
     if(Array.IndexOf(args,"--health")>=0){Emit(args,Json.Write(store.Health()));return 0;}
@@ -48,11 +55,11 @@ namespace Lineboard {
     else {using(var form=new WebDesktopForm(store,api,workspace,false,null,false,false,false,realtime)){Application.Run(form);}}
     return 0;
     }
-   }catch(Exception error){Console.Error.WriteLine(error.Message);bool command=Array.Exists(args,a=>a=="--serve"||a=="--self-test"||a=="--health"||a=="--probe"||a=="--export-outbox"||a=="--render-preview"||a=="--render-web-preview"||a=="--render-legacy-preview"||a=="--web-self-test"||a=="--web-capture"||a=="--web-capture-large"||a=="--production"||a=="--confirm-production");if(!command)MessageBox.Show("Não foi possível iniciar o Lineboard.\n\n"+error.Message+"\n\nConfira a base isolada e a permissão da API local. Consulte desktop/README.md. Para usar apenas neste computador, inicie com --host localhost.","Lineboard",MessageBoxButtons.OK,MessageBoxIcon.Error);return 1;}
+   }catch(Exception error){Console.Error.WriteLine(error.Message);bool command=Array.Exists(args,a=>a=="--serve"||a=="--self-test"||a=="--health"||a=="--realtime-health"||a=="--probe"||a=="--export-outbox"||a=="--render-preview"||a=="--render-web-preview"||a=="--render-legacy-preview"||a=="--web-self-test"||a=="--web-capture"||a=="--web-capture-large"||a=="--production"||a=="--confirm-production");if(!command)MessageBox.Show("Não foi possível iniciar o Lineboard.\n\n"+error.Message+"\n\nConfira a base isolada e a permissão da API local. Consulte desktop/README.md. Para usar apenas neste computador, inicie com --host localhost.","Lineboard",MessageBoxButtons.OK,MessageBoxIcon.Error);return 1;}
   }
    static string ConfiguredServer(){
     var server=Environment.GetEnvironmentVariable("LINEBOARD_SIC_SERVER");
-    return String.IsNullOrWhiteSpace(server)?@".\SQLEXPRESS":server.Trim();
+    return String.IsNullOrWhiteSpace(server)?@"(localdb)\MSSQLLocalDB":server.Trim();
    }
    internal static bool HasWebUi(){return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui","index.html"));}
   static string Option(string[] args,string name,string fallback){int index=Array.IndexOf(args,name);if(index<0)return fallback;if(index+1==args.Length||args[index+1].StartsWith("--"))throw new DomainError("MISSING_ARGUMENT");return args[index+1];}

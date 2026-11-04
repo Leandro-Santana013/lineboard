@@ -129,7 +129,7 @@ namespace Lineboard {
     case "labels.export": {
      ExactKeys(payload);if(saveLabels==null)throw new DomainError("LABEL_EXPORT_UNAVAILABLE");return new {saved=saveLabels(Labels.Html(LabelUnits(),50,30))};
     }
-    case "settings.info":ExactKeys(payload);return new {address=api.Address,sync_configured=sync.Configured,sync_state=backgroundSync.State,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,mode=store.Production?"production":"sandbox"};
+    case "settings.info":ExactKeys(payload);return new {address=api.Address,sync_configured=sync.Configured,sync_state=backgroundSync.State,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,realtime_error=realtime==null?null:realtime.LastError,mode=store.Production?"production":"sandbox"};
     case "pair.open":ExactKeys(payload);return new {address=api.Address,pin=api.OpenPairing(),expires_in_seconds=180};
     case "support.outbox":ExactKeys(payload);return new {items=store.Outbox()};
     default:throw new DomainError("UNKNOWN_ACTION");

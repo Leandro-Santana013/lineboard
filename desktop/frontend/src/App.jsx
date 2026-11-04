@@ -160,8 +160,13 @@ function App() {
 
   useEffect(() => {
     refresh();
+    const onSyncCompleted = () => refresh();
+    window.addEventListener('lineboard_sync_completed', onSyncCompleted);
     const timer = window.setInterval(refresh, 1800);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.removeEventListener('lineboard_sync_completed', onSyncCompleted);
+      window.clearInterval(timer);
+    };
   }, []);
 
   const navigate = (next) => { setView(next); setMessage(null); };
@@ -632,6 +637,12 @@ function SettingsPage() {
   };
   useEffect(() => { load(); const timer = window.setInterval(load, 5000); return () => window.clearInterval(timer); }, []);
   const info = state.info;
+  const realtimeState = valueText(info && info.realtime_state);
+  const realtimeStatus = info && info.realtime_configured
+    ? realtimeState === 'listening' ? { label: 'Conectado', color: 'brand' }
+      : realtimeState === 'retrying' ? { label: 'Reconectando', color: 'yellow' }
+        : { label: 'Iniciando', color: 'gray' }
+    : { label: 'Nao configurado', color: 'gray' };
   const syncStatus = valueText(info && info.sync_state);
   const status = info && info.sync_configured
     ? syncStatus === 'up_to_date' ? { label: 'Loja sincronizada', color: 'brand' }
@@ -650,6 +661,12 @@ function SettingsPage() {
       <Paper withBorder radius="md" p="lg">
         <Title order={3}>Precisa de ajuda?</Title>
         <Text c="dimmed" mt="xs">Deixe o Lineboard aberto no computador da loja. Se alguma operação ficar pendente, tente novamente nesta tela.</Text>
+      </Paper>
+      <Paper withBorder radius="md" p="lg">
+        <Title order={3}>Atualizacao do carrinho</Title>
+        <Text c="dimmed" mt="xs">O computador recebe as alteracoes do celular pelo canal ao vivo.</Text>
+        <Group mt="lg"><Badge color={realtimeStatus.color} variant="light">{realtimeStatus.label}</Badge></Group>
+        {info && info.realtime_error ? <Text c="red" size="sm" mt="sm">{info.realtime_error}</Text> : null}
       </Paper>
     </SimpleGrid>
   </>;

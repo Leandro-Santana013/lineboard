@@ -43,6 +43,7 @@ namespace Lineboard {
    if(!Directory.Exists(uiRoot)||!File.Exists(Path.Combine(uiRoot,"index.html")))throw new DomainError("UI_ASSETS_MISSING");
    sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);
    if(this.realtime!=null)this.realtime.SharedCartChanged+=backgroundSync.Request;
+   backgroundSync.Completed+=OnBackgroundSyncCompleted;
    Text="Lineboard • Loja e estoque • Laboratório";Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);StartPosition=FormStartPosition.CenterScreen;ClientSize=new Size(1224,794);MinimumSize=new Size(1180,740);if(largeCapture)ClientSize=new Size(1400,960);
    if(preview){ShowInTaskbar=false;WindowState=FormWindowState.Normal;}
    Controls.Add(webView);
@@ -265,6 +266,14 @@ namespace Lineboard {
     await webView.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,stream);
   }
 
-  void OnClosed(object sender,FormClosedEventArgs args) { if(realtime!=null)realtime.SharedCartChanged-=backgroundSync.Request;backgroundSync.Dispose();api.Dispose(); }
+  void OnBackgroundSyncCompleted() {
+   if(IsDisposed||Disposing)return;
+   try {
+    if(InvokeRequired) { BeginInvoke(new Action(OnBackgroundSyncCompleted)); return; }
+    if(webView.CoreWebView2!=null)webView.CoreWebView2.PostWebMessageAsJson("{\"type\":\"lineboard_sync_completed\"}");
+   } catch(InvalidOperationException) {}
+  }
+
+  void OnClosed(object sender,FormClosedEventArgs args) { if(realtime!=null)realtime.SharedCartChanged-=backgroundSync.Request;backgroundSync.Completed-=OnBackgroundSyncCompleted;backgroundSync.Dispose();api.Dispose(); }
  }
 }

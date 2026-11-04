@@ -10,6 +10,7 @@ namespace Lineboard {
   readonly SicStore store;
   readonly object lifecycle=new object();Timer retryTimer;int running;int requested;bool started;bool disposed;
   public volatile string State;
+  public event Action Completed;
   public BackgroundSync(CloudSync sync):this(null,sync){}
   public BackgroundSync(SicStore store,CloudSync sync):this(sync.Configured,()=>sync.Reconcile(),1000){this.store=store;if(this.store!=null)this.store.Changed+=Request;}
   internal BackgroundSync(bool configured,Func<Dictionary<string,object>> push,int retryDelay){this.configured=configured;this.push=push;this.retryDelay=retryDelay;State=configured?"waiting":"not_configured";}
@@ -29,6 +30,7 @@ namespace Lineboard {
    var failed=false;
    try{var result=push();State=Convert.ToString(result["state"]);}
    catch(Exception){State="pending";failed=true;}
+   try{var completed=Completed;if(completed!=null)completed();}catch{}
    bool queue=false;
    lock(lifecycle){
     if(disposed){running=0;return;}
