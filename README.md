@@ -141,6 +141,15 @@ O script pede somente a chave pública do Supabase na primeira execução, o
 e-mail do administrador e o código recebido por e-mail. O `ADMIN_ACCESS_TOKEN`
 fica apenas na memória durante a execução e não é salvo em arquivo.
 
+No Linux, use a versão Bash, também sem Node.js:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/Leandro-Santana013/lineboard/main/scripts/create-activation.sh \
+  -o /tmp/lineboard-create-activation.sh
+bash /tmp/lineboard-create-activation.sh
+```
+
 ```bash
 SUPABASE_URL="https://<projeto>.supabase.co" \
 SUPABASE_PUBLISHABLE_KEY="<chave-publica>" \
