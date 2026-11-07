@@ -9,5 +9,8 @@ coverage/
 .local/
 desktop/bin/
 desktop/obj/
+dist/
+vendor/
+mobile/android/build/
 *.bak
 .slim/deepwork/

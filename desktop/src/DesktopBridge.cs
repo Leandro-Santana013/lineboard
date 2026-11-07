@@ -14,8 +14,8 @@ namespace Lineboard {
   public const string Origin = "https://lineboard.local/";
   static readonly HashSet<string> Actions = new HashSet<string>(StringComparer.Ordinal) {
    "bootstrap", "product.create", "photo.upload", "photo.url", "unit.get", "unit.edit", "stock.adjust",
-   "cart.add", "cart.remove", "cart.confirm", "sales.report", "history.list", "labels.preview",
-   "labels.export", "settings.info", "activation.activate", "pair.open", "support.outbox"
+   "cart.add", "cart.remove", "cart.confirm", "sale.revert", "sales.report", "history.list", "labels.preview",
+   "labels.export", "labels.fixtures", "settings.info", "activation.activate", "pair.open", "support.outbox"
   };
   readonly SicStore store;
   readonly LocalApi api;
@@ -93,9 +93,9 @@ namespace Lineboard {
     case "photo.upload":ExactKeys(payload,"content_type","data");return sync.UploadPhoto(RequiredString(payload,"content_type",40),RequiredString(payload,"data",7*1024*1024));
     case "photo.url":ExactKeys(payload,"photo_path");return sync.PhotoUrl(RequiredString(payload,"photo_path",1000));
     case "bootstrap":
-     ExactKeys(payload);var bootstrap=new {catalog=store.Catalog(),cart=store.Cart(),mode=store.Production?"production":"sandbox",sync_state=backgroundSync.State};BootstrapServed=true;return bootstrap;
+     ExactKeys(payload);if(!store.Production&&String.Equals(store.Database,"LINEBOARD_LAB",StringComparison.OrdinalIgnoreCase))EnsureQrTestFixtures();var bootstrap=new {catalog=store.Catalog(),cart=store.Cart(),mode=store.Production?"production":"sandbox",sync_state=backgroundSync.State};BootstrapServed=true;return bootstrap;
     case "product.create": {
-     var draft=Model<ProductDraft>(payload,"request_id","name","brand","category","color","size","cost","price","location","photo","notes","internal_code","fiscal","variants");
+     var draft=Model<ProductDraft>(payload,"request_id","name","brand","category","color","size","cost","price","location","photo","photos","notes","internal_code","fiscal","variants");
      ValidateVariantPayload(payload);ValidateVariants(draft.variants);var result=store.CreateProduct(draft);backgroundSync.Request();return result;
     }
     case "unit.get": {
@@ -104,7 +104,7 @@ namespace Lineboard {
     case "unit.edit": {
      ExactKeys(payload,"barcode","draft");RequiredKeys(payload,"barcode","draft");
      var draftPayload=NestedObject(payload,"draft");
-     var draft=Model<EditDraft>(draftPayload,"request_id","revision","name","brand","category","color","size","cost","price","location","photo","notes","internal_code","fiscal");
+     var draft=Model<EditDraft>(draftPayload,"request_id","revision","name","brand","category","color","size","cost","price","location","photo","photos","notes","internal_code","fiscal");
      var result=store.Edit(StringValue(payload,"barcode"),draft);backgroundSync.Request();return result;
     }
     case "stock.adjust": {
@@ -117,17 +117,23 @@ namespace Lineboard {
      var draft=Model<CartDraft>(payload,"request_id","barcode");var result=store.RemoveCart(draft);backgroundSync.Request();return result;
     }
     case "cart.confirm": {
-     var draft=Model<ConfirmDraft>(payload,"request_id","version","payment","fiscal_document");var result=store.Confirm(draft);backgroundSync.Request();return result;
+     var draft=Model<ConfirmDraft>(payload,"request_id","version","payment","fiscal_document","discount_type","discount_value");var result=store.Confirm(draft);backgroundSync.Request();return result;
+    }
+    case "sale.revert": {
+     var draft=Model<RevertSaleDraft>(payload,"request_id","sale_id");var result=store.RevertSale(draft);backgroundSync.Request();return result;
     }
     case "sales.report": {
      var filter=Model<SalesReportFilter>(payload,"from","to","brand","category","payment","query");return store.SalesReport(filter);
     }
     case "history.list":ExactKeys(payload);return new {items=store.History()};
     case "labels.preview": {
-     ExactKeys(payload);return new {html=Labels.Html(LabelUnits(),50,30)};
+     ExactKeys(payload);return new {html=Labels.HtmlWithQr(LabelUnits(),50,30),test_fixtures_available=!store.Production,mode=store.Production?"production":"sandbox"};
     }
     case "labels.export": {
-     ExactKeys(payload);if(saveLabels==null)throw new DomainError("LABEL_EXPORT_UNAVAILABLE");return new {saved=saveLabels(Labels.Html(LabelUnits(),50,30))};
+     ExactKeys(payload);if(saveLabels==null)throw new DomainError("LABEL_EXPORT_UNAVAILABLE");return new {saved=saveLabels(Labels.HtmlWithQr(LabelUnits(),50,30))};
+    }
+    case "labels.fixtures": {
+     ExactKeys(payload);if(store.Production)throw new DomainError("TEST_FIXTURES_SANDBOX_ONLY");EnsureQrTestFixtures();return new {html=Labels.HtmlWithQr(LabelUnits(),50,30),test_fixtures_available=true};
     }
     case "settings.info":ExactKeys(payload);return new {address=api.Address,server=store.Server,database=store.Database,sync_configured=sync.Configured,sync_state=backgroundSync.State,activation_available=!sync.Configured,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,realtime_error=realtime==null?null:realtime.LastError,mode=store.Production?"production":"sandbox"};
     case "activation.activate":ExactKeys(payload,"code","device_name");return new CloudActivation(store).Activate(StringValue(payload,"code"),StringValue(payload,"device_name"));
@@ -161,8 +167,33 @@ namespace Lineboard {
    return store.Catalog().Where(x=>Convert.ToDecimal(x["quantity"]??0,CultureInfo.InvariantCulture)==1).ToList();
   }
 
+  void EnsureQrTestFixtures() {
+   var fixtures=new[]{
+    new {request_id="f0a00000-0000-4000-8000-000000000001",code="LB-QR-TEST-01",name="TESTE QR - Camiseta",color="Azul",size="M"},
+    new {request_id="f0a00000-0000-4000-8000-000000000002",code="LB-QR-TEST-02",name="TESTE QR - Bone",color="Preto",size="Unico"},
+    new {request_id="f0a00000-0000-4000-8000-000000000003",code="LB-QR-TEST-03",name="TESTE QR - Leash",color="Verde",size="7 pes"}
+   };
+   foreach(var fixture in fixtures) {
+    var item=store.Catalog().SingleOrDefault(x=>String.Equals(Convert.ToString(x["internal_code"]),fixture.code,StringComparison.OrdinalIgnoreCase));
+    if(item==null) {
+     store.CreateProduct(new ProductDraft{request_id=fixture.request_id,name=fixture.name,brand="Lines",category="Teste QR",internal_code=fixture.code,location="Laboratorio QR",notes="Produto ficticio para teste local de QR Code",cost=10m,price=25m,qr_only=true,variants=new List<VariantDraft>{new VariantDraft{color=fixture.color,size=fixture.size,quantity=1}}});
+     item=store.Catalog().SingleOrDefault(x=>String.Equals(Convert.ToString(x["internal_code"]),fixture.code,StringComparison.OrdinalIgnoreCase));
+    }
+    if(item==null||!String.Equals(Convert.ToString(item["name"]),fixture.name,StringComparison.Ordinal))throw new DomainError("TEST_FIXTURE_COLLISION");
+    if(!Convert.ToBoolean(item["qr_only"]))store.SetQrOnlyForTesting(Convert.ToString(item["barcode"]));
+    var quantity=Convert.ToDecimal(item["quantity"]??0,CultureInfo.InvariantCulture);
+    if(quantity==0)store.Adjust(new AdjustmentDraft{request_id=Guid.NewGuid().ToString(),barcode=Convert.ToString(item["barcode"]),quantity=1,reason="Reativar produto ficticio para teste de codigo de barras"});
+    else if(quantity!=1)throw new DomainError("TEST_FIXTURE_STOCK_UNEXPECTED");
+   }
+  }
+
   static string Friendly(string code) {
    var messages=new Dictionary<string,string>(StringComparer.Ordinal) {
+    {"TOO_MANY_PHOTOS","Adicione no máximo 6 imagens por produto."},
+    {"SALE_NOT_FOUND","Venda não encontrada para reversão."},
+    {"SALE_ALREADY_REVERTED","Esta venda já foi revertida."},
+    {"REVERSAL_STOCK_CONFLICT","O estoque desta venda já foi reposto ou alterado. Confira o histórico no SIC antes de reverter, para não devolver as peças em duplicidade."},
+    {"SALE_REVERSAL_UNSUPPORTED","Esta venda não pode ser revertida automaticamente."},
     {"PHOTO_TOO_LARGE","Escolha uma imagem de até 5 MB."},
     {"INVALID_PHOTO_TYPE","Escolha uma imagem JPG/JPEG, PNG ou WebP válida."},
     {"INVALID_PHOTO","Não foi possível abrir esta foto. Escolha a imagem novamente."},
@@ -179,11 +210,14 @@ namespace Lineboard {
     {"CLOUD_NOT_ACKNOWLEDGED","Não foi possível confirmar com a loja. Confira a conexão e tente novamente."},
     {"SIC_STOCK_CONFLICT","O saldo foi alterado fora do Lineboard. Confira a peça no SIC."},
     {"ALREADY_IN_CART","Essa peça já está no carrinho."},
+    {"QR_TEST_MIXED_CART","Mantenha os produtos fictícios em um carrinho separado."},
+    {"QR_TEST_CODE_RESERVED","Mantenha o código interno reservado dos produtos fictícios."},
     {"INSUFFICIENT_STOCK","A peça não está disponível."},
     {"PRICE_REQUIRED","Informe um preço de venda antes de concluir."},
     {"REVISION_CONFLICT","A ficha mudou em outra sessão. Reabra e confira as informações."},
     {"EMPTY_CART","Adicione uma peça ao carrinho."},
     {"INVALID_FISCAL_DOCUMENT","Escolha NFC-e ou NF-e para continuar."},
+    {"INVALID_DISCOUNT","Informe um desconto entre 0 e 100% ou um valor em reais que não ultrapasse o subtotal, com até duas casas decimais."},
     {"UNIT_IN_CART","Remova a peça do carrinho antes de ajustar o estoque."},
     {"INVALID_FIELD","Confira os campos do produto."},
     {"INVALID_PRICE","Informe valores válidos de custo e venda."},

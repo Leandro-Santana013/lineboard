@@ -51,6 +51,7 @@ import {
   IconQrcode,
   IconReceipt,
   IconRefresh,
+  IconRotateClockwise,
   IconSearch,
   IconSettings,
   IconShoppingCart,
@@ -59,6 +60,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { callHost, hasDesktopHost, requestId } from './bridge';
+import { saleDiscount } from './sale-discount.js';
 import { ProductPhotoField, ProductPhotoPreview } from './ProductPhoto.jsx';
 import storeLogo from './assets/lines-boardshop.jpg';
 
@@ -78,12 +80,22 @@ const fiscalNumberKeys = ['icms', 'ipi', 'origem', 'basecalculo', 'pesobruto', '
 
 const emptyVariant = () => ({ color: '', size: '', quantity: 1 });
 const emptyDraft = () => ({
-  name: '', brand: '', category: '', internal_code: '', cost: '0,00', price: '0,00', color: '', size: '', location: '', photo: '', notes: '', fiscal: {},
+  name: '', brand: '', category: '', internal_code: '', cost: '0,00', price: '0,00', color: '', size: '', location: '', photo: '', photos: [], notes: '', fiscal: {},
   variants: [emptyVariant()], request_id: null,
 });
 
 function valueText(value) {
   return value === null || value === undefined ? '' : String(value);
+}
+
+function brandLabel(value) {
+  const brand = valueText(value).trim();
+  return brand.toLocaleLowerCase('pt-BR') === 'lines' ? 'Lines' : brand;
+}
+
+function classificationOptions(rows, key) {
+  return [...new Set((rows || []).map((row) => key === 'brand' ? brandLabel(row && row[key]) : valueText(row && row[key]).trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
 function decimalText(value) {
@@ -117,7 +129,7 @@ function makeDraftFromUnit(unit) {
   return {
     name: valueText(unit && unit.name), brand: valueText(unit && unit.brand), category: valueText(unit && unit.category), internal_code: valueText(unit && unit.internal_code),
     cost: decimalText(unit && unit.cost), price: decimalText(unit && unit.price), color: valueText(unit && unit.color), size: valueText(unit && unit.size),
-    location: valueText(unit && unit.location), photo: valueText(unit && unit.photo_path), notes: valueText(unit && unit.notes), fiscal,
+    location: valueText(unit && unit.location), photo: valueText(unit && unit.photo_path), photos: Array.isArray(unit && unit.photo_paths) ? unit.photo_paths : (unit && unit.photo_path ? [unit.photo_path] : []), notes: valueText(unit && unit.notes), fiscal,
     variants: [{ color: valueText(unit && unit.color), size: valueText(unit && unit.size), quantity: 1 }], request_id: null,
     barcode: valueText(unit && unit.barcode), revision: unit && unit.revision,
   };
@@ -174,7 +186,7 @@ function App() {
   const startProduct = () => { setProductMode('create'); setDraft((current) => current || emptyDraft()); setView('product'); setMessage(null); };
   const cancelProduct = () => { setView('inventory'); setDraft(emptyDraft()); setMessage(null); };
 
-  const run = async (key, action, payload, success, { showSuccess = true } = {}) => {
+  const run = async (key, action, payload, success, { showSuccess = true, successMessage = 'Operação concluída.', throwOnError = false } = {}) => {
     if (busy || activeMutations.current) return null;
     mutationEpoch.current += 1;
     activeMutations.current += 1;
@@ -182,11 +194,12 @@ function App() {
     try {
       const result = await callHost(action, payload);
       if (success) success(result);
-      if (showSuccess) setMessage({ type: 'success', text: 'Operação concluída.' });
+      if (showSuccess) setMessage({ type: 'success', text: successMessage });
       await refresh(true);
       return result;
     } catch (error) {
       setMessage({ type: 'error', text: error.message || 'Operação não concluída.' });
+      if (throwOnError) throw error;
       return null;
     } finally {
       activeMutations.current = Math.max(0, activeMutations.current - 1);
@@ -201,9 +214,9 @@ function App() {
   const clearOperation = (key) => operationIds.current.delete(key);
   const addCart = (unit) => { const key = `cart-add-${unit.barcode}`; return run(key, 'cart.add', { request_id: operationRequest(key), barcode: unit.barcode }, () => clearOperation(key), { showSuccess: false }); };
   const removeCart = (unit) => { const key = `cart-remove-${unit.barcode}`; return run(key, 'cart.remove', { request_id: operationRequest(key), barcode: unit.barcode }, () => clearOperation(key), { showSuccess: false }); };
-  const confirmCart = (payment, fiscal_document, onSuccess) => {
-    const key = `cart-confirm-${cart.version}-${payment}-${fiscal_document || 'none'}`;
-    return run('cart-confirm', 'cart.confirm', { request_id: operationRequest(key), version: cart.version, payment, fiscal_document }, () => {
+  const confirmCart = (payment, fiscal_document, discount_type, discount_value, onSuccess) => {
+    const key = `cart-confirm-${cart.version}-${payment}-${fiscal_document || 'none'}-${discount_type}-${discount_value}`;
+    return run('cart-confirm', 'cart.confirm', { request_id: operationRequest(key), version: cart.version, payment, fiscal_document, discount_type, discount_value }, () => {
       clearOperation(key);
       if (onSuccess) onSuccess();
     }, { showSuccess: false });
@@ -233,13 +246,15 @@ function App() {
     }
     const request_id = nextDraft.request_id || requestId();
     if (modeOverride === 'edit') {
-      const editDraft = { request_id, revision: nextDraft.revision, name: nextDraft.name, brand: nextDraft.brand, category: nextDraft.category, color: nextDraft.color, size: nextDraft.size, cost, price, location: nextDraft.location, photo: nextDraft.photo, notes: nextDraft.notes, internal_code: nextDraft.internal_code, fiscal };
+      const photos = Array.isArray(nextDraft.photos) ? nextDraft.photos : (nextDraft.photo ? [nextDraft.photo] : []);
+      const editDraft = { request_id, revision: nextDraft.revision, name: nextDraft.name, brand: nextDraft.brand, category: nextDraft.category, color: nextDraft.color, size: nextDraft.size, cost, price, location: nextDraft.location, photo: photos[0] || '', photos, notes: nextDraft.notes, internal_code: nextDraft.internal_code, fiscal };
       try { await run('product-save', 'unit.edit', { barcode: nextDraft.barcode, draft: editDraft }, () => { setEditUnit(null); }); } catch { /* run already exposes a recoverable message */ }
     } else {
       // Keep the localized text in the draft so a failed retry still displays 7,25.
       // The converted numeric copy above is sent only to the host payload.
       setDraft({ ...nextDraft, request_id });
-      try { await run('product-save', 'product.create', { name: nextDraft.name, brand: nextDraft.brand, category: nextDraft.category, color: nextDraft.color, size: nextDraft.size, cost, price, location: nextDraft.location, photo: nextDraft.photo, notes: nextDraft.notes, internal_code: nextDraft.internal_code, fiscal, request_id, variants }, () => { setDraft(emptyDraft()); setView('inventory'); }); } catch { /* run already exposes a recoverable message */ }
+      const photos = Array.isArray(nextDraft.photos) ? nextDraft.photos : (nextDraft.photo ? [nextDraft.photo] : []);
+      try { await run('product-save', 'product.create', { name: nextDraft.name, brand: nextDraft.brand, category: nextDraft.category, color: nextDraft.color, size: nextDraft.size, cost, price, location: nextDraft.location, photo: photos[0] || '', photos, notes: nextDraft.notes, internal_code: nextDraft.internal_code, fiscal, request_id, variants }, () => { setDraft(emptyDraft()); setView('inventory'); }); } catch { /* run already exposes a recoverable message */ }
     }
   };
 
@@ -249,10 +264,19 @@ function App() {
     await run('adjust', 'stock.adjust', { request_id: requestId(), barcode: adjustUnit.barcode, quantity: Number(quantity), reason: reason.trim() }, () => setAdjustUnit(null));
   };
 
+  const revertSale = async (row) => {
+    if (!row || !row.sale_id) return null;
+    const key = `sale-revert-${row.sale_id}`;
+    return run('sale-revert', 'sale.revert', { request_id: operationRequest(key), sale_id: row.sale_id }, () => clearOperation(key), { successMessage: 'Venda revertida e estoque devolvido.', throwOnError: true });
+  };
+
+  const brands = classificationOptions(catalog, 'brand');
+  const categories = classificationOptions(catalog, 'category');
+
   const content = view === 'product'
-    ? <ProductPage draft={draft} setDraft={setDraft} onSave={saveProduct} onCancel={cancelProduct} busy={busy === 'product-save'} mode={productMode} environmentMode={environmentMode} />
+    ? <ProductPage draft={draft} setDraft={setDraft} onSave={saveProduct} onCancel={cancelProduct} busy={busy === 'product-save'} mode={productMode} environmentMode={environmentMode} brands={brands} categories={categories} />
     : view === 'checkout' ? <CheckoutPage catalog={catalog} cart={cart} addCart={addCart} removeCart={removeCart} confirmCart={confirmCart} busy={busy} environmentMode={environmentMode} />
-      : view === 'sales' ? <SalesDashboardPage />
+      : view === 'sales' ? <SalesDashboardPage onRevert={revertSale} />
         : view === 'history' ? <HistoryPage />
           : view === 'labels' ? <LabelsPage />
             : view === 'settings' ? <SettingsPage />
@@ -270,13 +294,13 @@ function App() {
     <AppShell.Main>
       <Box className={`app-content ${view === 'inventory' || view === 'checkout' ? 'operation-shell' : ''}`}>
         {!hasDesktopHost() && !hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md">Abra este conteúdo pelo executável desktop para acessar o SIC.</Alert> : null}
-        {hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md" title="Desktop necessário">{hostError.message || 'Abra o Lineboard pelo aplicativo desktop para acessar o SIC.'}</Alert> : null}
+        {hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md" title="Desktop necessário">{hostError.message || 'Abra o Linesboard pelo aplicativo desktop para acessar o SIC.'}</Alert> : null}
         {syncState === 'not_configured' && !hostError ? <Alert icon={<IconInfoCircle size={18} />} color="yellow" mb="md" title="Conecte esta loja ao estoque cloud">Use o código de ativação da loja em <Button variant="subtle" size="compact-sm" px={4} onClick={() => navigate('settings')}>Configurações</Button>.</Alert> : null}
         {message ? <Alert mb="md" color={message.type === 'error' ? 'red' : 'brand'} icon={message.type === 'error' ? <IconX size={18} /> : <IconCircleCheck size={18} />} withCloseButton onClose={() => setMessage(null)}>{message.text}</Alert> : null}
         {content}
       </Box>
     </AppShell.Main>
-    <EditDrawer unit={editUnit} onClose={() => setEditUnit(null)} onSave={(unitDraft) => saveProduct(unitDraft, 'edit')} busy={busy === 'product-save'} />
+    <EditDrawer unit={editUnit} onClose={() => setEditUnit(null)} onSave={(unitDraft) => saveProduct(unitDraft, 'edit')} busy={busy === 'product-save'} brands={brands} categories={categories} />
     <AdjustDrawer unit={adjustUnit} onClose={() => setAdjustUnit(null)} onSave={applyAdjustment} busy={busy === 'adjust'} />
   </AppShell>;
 }
@@ -300,7 +324,7 @@ function Sidebar({ active, navigate, cartCount, environmentMode }) {
     </Stack>
     <Stack gap="sm">
       <Button variant="subtle" justify="flex-start" leftSection={<IconSettings size={22} />} className={`nav-link ${active === 'settings' ? 'active' : ''}`} onClick={() => navigate('settings')}>Configurações</Button>
-      <Text size="sm" c={environmentMode === 'production' ? '#dddddd' : '#ffc45a'}><span className={`lab-dot ${environmentMode === 'production' ? 'production' : ''}`} /> {environmentMode === 'production' ? 'SICNET · produção' : 'Modo laboratório'}</Text>
+      <Text size="sm" c={environmentMode === 'production' ? '#dddddd' : '#ffc45a'}><span className={`lab-dot ${environmentMode === 'production' ? 'production' : ''}`} /> {environmentMode === 'production' ? 'SICNET' : 'Modo de testes'}</Text>
     </Stack>
   </Stack>;
 }
@@ -318,7 +342,7 @@ function InventoryPage({ catalog, cart, selected, setSelected, addCart, onEdit, 
   const cartCodes = new Set(cart.items.map((item) => item.barcode));
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value || 'all' }));
   const clearFilters = () => setFilters({ query: '', status: 'all', quantity: 'all', brand: 'all', category: 'all', color: 'all', size: 'all' });
-  const filterOptions = (key, allLabel) => [{ value: 'all', label: allLabel }, ...Array.from(new Set(catalog.map((unit) => valueText(unit[key]).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')).map((value) => ({ value, label: value }))];
+  const filterOptions = (key, allLabel) => [{ value: 'all', label: allLabel }, ...Array.from(new Set(catalog.map((unit) => key === 'brand' ? brandLabel(unit[key]) : valueText(unit[key]).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')).map((value) => ({ value, label: value }))];
   const activeFilterCount = [filters.status, filters.quantity, filters.brand, filters.category, filters.color, filters.size].filter((value) => value !== 'all').length;
   const normalizedQuery = filters.query.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const filtered = catalog.filter((unit) => {
@@ -328,7 +352,7 @@ function InventoryPage({ catalog, cart, selected, setSelected, addCart, onEdit, 
     const quantity = Number(unit.quantity || 0); const conflict = Boolean(unit.conflict);
     const statusMatches = filters.status === 'all' || (filters.status === 'available' && quantity === 1 && !inCart && !conflict) || (filters.status === 'cart' && inCart) || (filters.status === 'empty' && quantity !== 1) || (filters.status === 'conflict' && conflict);
     const quantityMatches = filters.quantity === 'all' || (filters.quantity === 'with-stock' && quantity > 0) || (filters.quantity === 'without-stock' && quantity <= 0);
-    return matches && statusMatches && quantityMatches && (!filters.brand || filters.brand === 'all' || valueText(unit.brand) === filters.brand) && (!filters.category || filters.category === 'all' || valueText(unit.category) === filters.category) && (!filters.color || filters.color === 'all' || valueText(unit.color) === filters.color) && (!filters.size || filters.size === 'all' || valueText(unit.size) === filters.size);
+    return matches && statusMatches && quantityMatches && (!filters.brand || filters.brand === 'all' || brandLabel(unit.brand) === filters.brand) && (!filters.category || filters.category === 'all' || valueText(unit.category) === filters.category) && (!filters.color || filters.color === 'all' || valueText(unit.color) === filters.color) && (!filters.size || filters.size === 'all' || valueText(unit.size) === filters.size);
   });
   const totalWithStock = catalog.filter((unit) => Number(unit.quantity || 0) > 0 && !unit.conflict).length;
   const totalWithoutStock = catalog.filter((unit) => Number(unit.quantity || 0) <= 0 && !unit.conflict).length;
@@ -366,6 +390,11 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
   const [payment, setPayment] = useState('pix');
   const [confirming, setConfirming] = useState(false);
   const [fiscalDocument, setFiscalDocument] = useState('nfce');
+  const [discountType, setDiscountType] = useState('percent');
+  const [discountInput, setDiscountInput] = useState('');
+  const discount = saleDiscount(cart.items, discountType, discountInput);
+  const discountError = discount.valid ? null : discountType === 'percent' ? 'Informe de 0 a 100%, com até 2 casas decimais.' : 'Informe um valor de 0 até o subtotal, com até 2 casas decimais.';
+  useEffect(() => { if (!cart.items.length) { setDiscountInput(''); setConfirming(false); } }, [cart.items.length]);
   const available = catalog.filter((unit) => Number(unit.quantity) === 1 && !unit.conflict && !cart.items.some((item) => item.barcode === unit.barcode));
   const normalizedManualQuery = manualQuery.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const manualMatches = available.filter((unit) => [unit.name, unit.barcode, unit.brand, unit.category, unit.color, unit.size, unit.internal_code].join(' ').toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(normalizedManualQuery));
@@ -399,6 +428,7 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
       scanBufferTimerRef.current = null;
     };
     const captureScanner = (event) => {
+      if (event.target instanceof Element && event.target.closest('input:not([readonly]):not([disabled]), textarea, [contenteditable="true"]')) return;
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       if (event.key === 'Enter') {
         const code = scanBufferRef.current.trim();
@@ -472,14 +502,19 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
             <Text className="pos-payment-description">Selecione como o cliente vai pagar</Text>
             <SimpleGrid cols={2} spacing={8} className="payment-grid">{paymentOptions.map(({ value, label, icon: PaymentIcon }) => <Button key={value} variant="default" className={`pos-payment-option ${payment === value ? 'selected' : ''}`} leftSection={<PaymentIcon size={17} />} disabled={!cart.items.length} aria-pressed={payment === value} onClick={() => setPayment(value)}>{label}</Button>)}</SimpleGrid>
             <Select className="pos-fiscal-select" label="Documento fiscal" value={fiscalDocument} onChange={(value) => setFiscalDocument(value || 'nfce')} data={[{ value: 'nfce', label: 'NFC-e · modelo 65' }, { value: 'nfe', label: 'NF-e · modelo 55' }]} disabled={!cart.items.length} />
+            <SimpleGrid cols={2} spacing={8} className="pos-discount-controls">
+              <Select label="Tipo de desconto" value={discountType} onChange={(value) => { setDiscountType(value || 'percent'); setDiscountInput(''); }} data={[{ value: 'percent', label: 'Porcentagem (%)' }, { value: 'amount', label: 'Valor em reais (R$)' }]} allowDeselect={false} disabled={!cart.items.length || !!busy} />
+              <TextInput label="Desconto" aria-label="Valor do desconto" inputMode="decimal" placeholder="0,00" value={discountInput} onChange={(event) => setDiscountInput(event.currentTarget.value)} rightSection={<Text size="sm" c="dimmed">{discountType === 'percent' ? '%' : 'R$'}</Text>} error={discountError} disabled={!cart.items.length || !!busy} />
+            </SimpleGrid>
             <Box className="pos-sale-summary">
-              <dl className="pos-summary-lines"><div><dt>Subtotal</dt><dd>{money(cart.total)}</dd></div><div><dt>Descontos</dt><dd className="pos-discount">{money(0)}</dd></div></dl>
-              <Box className="pos-total"><Text className="pos-total-label">Total da venda</Text><Text className="pos-total-value">{money(cart.total)}</Text></Box>
+              <dl className="pos-summary-lines"><div><dt>Subtotal</dt><dd>{money(discount.subtotal)}</dd></div><div><dt>Descontos</dt><dd className="pos-discount">{discount.discount ? '− ' : ''}{money(discount.discount)}</dd></div></dl>
+              <Box className="pos-total"><Text className="pos-total-label">Total da venda</Text><Text className="pos-total-value">{money(discount.total)}</Text></Box>
             </Box>
             {confirming ? <Alert mt="sm" color="yellow" title="Revisar venda e documento fiscal" icon={<IconReceipt size={18} />}>
               <Text size="sm">O estoque será baixado uma vez. A solicitação de {fiscalDocument === 'nfe' ? 'NF-e (modelo 55)' : 'NFC-e (modelo 65)'} ficará registrada; a nota só será considerada autorizada após o retorno da SEFAZ.</Text>
-              <Group justify="flex-end" mt="sm"><Button variant="default" onClick={() => setConfirming(false)}>Voltar</Button><Button color="brand" loading={busy === 'cart-confirm'} onClick={() => confirmCart(payment, fiscalDocument, () => setConfirming(false))}>Registrar e solicitar nota</Button></Group>
-            </Alert> : <Button fullWidth className="pos-confirm-sale" leftSection={<IconReceipt size={18} />} disabled={!cart.items.length} onClick={() => setConfirming(true)}>Registrar venda e emitir nota</Button>}
+              <Text size="sm" fw={700} mt="xs">Total a pagar: {money(discount.total)}</Text>
+              <Group justify="flex-end" mt="sm"><Button variant="default" disabled={!!busy} onClick={() => setConfirming(false)}>Voltar</Button><Button color="brand" disabled={!discount.valid || !cart.items.length} loading={busy === 'cart-confirm'} onClick={() => confirmCart(payment, fiscalDocument, discountType, discount.value, () => { setConfirming(false); setDiscountInput(''); })}>Registrar e solicitar nota</Button></Group>
+            </Alert> : <Button fullWidth className="pos-confirm-sale" leftSection={<IconReceipt size={18} />} disabled={!cart.items.length || !discount.valid || !!busy} onClick={() => setConfirming(true)}>Registrar venda e emitir nota</Button>}
             <Text className="pos-fiscal-notice">Confira os dados antes de concluir. A emissão fiscal está pendente de configuração{environmentMode === 'production' ? ' no SICNET' : ' no ambiente de teste'}.</Text>
           </Box>
         </Box>
@@ -495,7 +530,7 @@ function CheckoutPage({ catalog, cart, addCart, removeCart, confirmCart, busy, e
   </>;
 }
 
-function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmentMode }) {
+function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmentMode, brands, categories }) {
   const [additionalOpen, setAdditionalOpen] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
@@ -511,8 +546,8 @@ function ProductPage({ draft, setDraft, onSave, onCancel, busy, mode, environmen
     <Alert color="yellow" icon={<IconInfoCircle size={18} />} mb="md">{environmentMode === 'production' ? 'SICNET · Emissão fiscal pendente de configuração' : 'Ambiente de teste · Emissão fiscal pendente de configuração'}</Alert>
     <Box className="product-layout">
       <Stack gap="md" className="product-main">
-    <Paper withBorder radius="md" p="lg"><SectionTitle number="1" title="Informações do produto" /><Stack gap="sm" mt="md"><TextInput label="Nome do produto" required value={draft.name} onChange={(event) => update('name', event.currentTarget.value)} autoFocus /><SimpleGrid cols={{ base: 1, sm: 3 }}><TextInput label="Marca (opcional)" placeholder="Informe a marca" value={draft.brand} onChange={(event) => update('brand', event.currentTarget.value)} /><TextInput label="Tipo de peça" placeholder="Ex.: camiseta, calça" value={draft.category} onChange={(event) => update('category', event.currentTarget.value)} /><TextInput label="Código interno (opcional)" value={draft.internal_code} onChange={(event) => update('internal_code', event.currentTarget.value)} /></SimpleGrid><SimpleGrid cols={2}><MoneyInput label="Preço de custo" value={draft.cost} onChange={(value) => update('cost', value)} /><MoneyInput label="Preço de venda" required value={draft.price} onChange={(value) => update('price', value)} /></SimpleGrid>{mode === 'edit' ? <SimpleGrid cols={2}><TextInput label="Cor" value={draft.color} onChange={(event) => update('color', event.currentTarget.value)} /><TextInput label="Tamanho" value={draft.size} onChange={(event) => update('size', event.currentTarget.value)} /></SimpleGrid> : <Text size="sm" c="dimmed">O mesmo preço será aplicado às peças deste cadastro.</Text>}</Stack></Paper>
-        <Paper withBorder radius="md" p="lg"><ProductPhotoField value={draft.photo} onChange={(value) => update('photo', value)} disabled={busy} onBusyChange={setPhotoBusy} /></Paper>
+    <Paper withBorder radius="md" p="lg"><SectionTitle number="1" title="Informações do produto" /><Stack gap="sm" mt="md"><TextInput label="Nome do produto" required value={draft.name} onChange={(event) => update('name', event.currentTarget.value)} autoFocus /><SimpleGrid cols={{ base: 1, sm: 3 }}><Autocomplete label="Marca (opcional)" placeholder="Escolha ou informe a marca" data={brands} value={draft.brand} onChange={(value) => update('brand', value)} /><Autocomplete label="Tipo de peça" placeholder="Escolha ou informe o tipo" data={categories} value={draft.category} onChange={(value) => update('category', value)} /><TextInput label="Código interno (opcional)" value={draft.internal_code} onChange={(event) => update('internal_code', event.currentTarget.value)} /></SimpleGrid><SimpleGrid cols={2}><MoneyInput label="Preço de custo" value={draft.cost} onChange={(value) => update('cost', value)} /><MoneyInput label="Preço de venda" required value={draft.price} onChange={(value) => update('price', value)} /></SimpleGrid>{mode === 'edit' ? <SimpleGrid cols={2}><TextInput label="Cor" value={draft.color} onChange={(event) => update('color', event.currentTarget.value)} /><TextInput label="Tamanho" value={draft.size} onChange={(event) => update('size', event.currentTarget.value)} /></SimpleGrid> : <Text size="sm" c="dimmed">O mesmo preço será aplicado às peças deste cadastro.</Text>}</Stack></Paper>
+        <Paper withBorder radius="md" p="lg"><ProductPhotoField value={draft.photos} onChange={(value) => update('photos', value)} disabled={busy} onBusyChange={setPhotoBusy} /></Paper>
         <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="xs"><SectionTitle number="2" title="Cores, tamanhos e quantidades" /></Group><Text size="sm" c="dimmed" ml={42} mb="sm">Adicione uma linha para cada combinação de cor e tamanho.</Text><VariantTable variants={draft.variants} onChange={updateVariant} onRemove={removeVariant} readOnly={mode === 'edit'} /><Group justify="space-between" mt="sm"><Button variant="default" leftSection={<IconPlus size={17} />} onClick={addVariant} disabled={mode === 'edit'}>Adicionar variação</Button><Text size="sm" fw={700} c="dimmed">{integer.format(pieces)} peças no total</Text></Group></Paper>
         <Paper withBorder radius="md" p={0}><Button fullWidth variant="subtle" justify="space-between" rightSection={additionalOpen ? <IconChevronDown size={17} /> : <IconChevronRight size={17} />} leftSection={<IconChevronRight size={17} />} onClick={() => setAdditionalOpen((value) => !value)} className="additional-toggle">Informações adicionais <Text span size="sm" c="dimmed" fw={400}>Localização, observações e dados fiscais</Text></Button><Collapse expanded={additionalOpen}><Box p="lg" pt={0}><SimpleGrid cols={2} mt="md"><TextInput label="Localização" value={draft.location} onChange={(event) => update('location', event.currentTarget.value)} /></SimpleGrid><Textarea mt="sm" label="Observações" minRows={3} value={draft.notes} onChange={(event) => update('notes', event.currentTarget.value)} /><Text fw={700} mt="lg" mb="sm">Dados fiscais</Text><SimpleGrid cols={2}>{[...fiscalTextKeys, ...fiscalNumberKeys].map((key) => <TextInput key={key} label={fiscalLabels[key]} value={valueText(draft.fiscal[key])} onChange={(event) => updateFiscal(key, event.currentTarget.value)} />)}</SimpleGrid></Box></Collapse></Paper>
       </Stack>
@@ -538,7 +573,7 @@ function SummaryMetric({ label, value, bold }) { return <Group justify="space-be
 
 function LabelExample({ name, variant, price }) { return <Box className="label-example"><Text size="sm" fw={700} mb="xs">Exemplo de etiqueta</Text><Card withBorder radius="md" p="md" className="label-card"><Text fw={800} ta="center" lineClamp={1}>{name}</Text><Text c="dimmed" ta="center" size="sm">{variant}</Text><Group justify="center" my="sm"><IconBarcode size={64} stroke={1.5} aria-label="Código de barras" /></Group><Text fw={800} ta="center" size="lg">{price}</Text><Text c="dimmed" ta="center" size="xs">Código gerado no cadastro</Text></Card></Box>; }
 
-const historyReasonLabels = { initial: 'Entrada inicial', sale: 'Venda', adjustment: 'Ajuste' };
+const historyReasonLabels = { initial: 'Entrada inicial', sale: 'Venda', sale_reversal: 'Estorno de venda', adjustment: 'Ajuste' };
 const historyDateFormatter = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
 function historyReason(reason) {
@@ -598,9 +633,25 @@ function ReportBars({ title, rows }) {
   return <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="md"><Title order={3}>{title}</Title><Text size="sm" c="dimmed">Por faturamento</Text></Group>{rows && rows.length ? <Stack gap="sm">{rows.slice(0, 8).map((row) => <Box key={row.label}><Group justify="space-between" mb={4}><Text size="sm" fw={600}>{row.label}</Text><Text size="sm" c="dimmed">{money(row.revenue)} · {integer.format(reportNumber(row.items))} itens</Text></Group><Progress value={(reportNumber(row.revenue) / maximum) * 100} color="brand" radius="xl" /></Box>)}</Stack> : <EmptyState title="Sem saídas no período" text="Os agrupamentos aparecerão quando houver vendas." icon={<IconChartBar size={32} />} />}</Paper>;
 }
 
-function SalesDashboardPage() {
+function SalesDashboardPage({ onRevert }) {
   const [filters, setFilters] = useState({ period: 'month', brand: 'all', category: 'all', payment: 'all', query: '' });
   const [state, setState] = useState({ loading: true, report: null, error: null });
+  const [reversing, setReversing] = useState(null);
+  const [reversalBusy, setReversalBusy] = useState(false);
+  const [reversalError, setReversalError] = useState('');
+  const closeReversal = () => { if (!reversalBusy) { setReversing(null); setReversalError(''); } };
+  const confirmReversal = async () => {
+    if (!reversing || reversalBusy) return;
+    setReversalBusy(true); setReversalError('');
+    try {
+      const result = await onRevert(reversing);
+      if (result === null) return;
+      setReversing(null);
+      load();
+    } catch (error) {
+      setReversalError(error.message || 'Não foi possível reverter a venda.');
+    } finally { setReversalBusy(false); }
+  };
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value || (key === 'query' ? '' : 'all') }));
   const load = () => {
     const range = reportPeriodRange(filters.period);
@@ -614,13 +665,22 @@ function SalesDashboardPage() {
   const brands = [{ value: 'all', label: 'Todas as marcas' }, ...(report.filters.brands || []).map((value) => ({ value, label: value }))];
   const categories = [{ value: 'all', label: 'Todos os tipos' }, ...(report.filters.categories || []).map((value) => ({ value, label: value }))];
   return <>
+    <Modal opened={Boolean(reversing)} onClose={closeReversal} title="Reverter venda" centered closeOnClickOutside={!reversalBusy} closeOnEscape={!reversalBusy} withCloseButton={!reversalBusy}>
+      <Stack gap="md">
+        <Text>Esta ação cancela a venda inteira e devolve todas as suas peças ao estoque.</Text>
+        {reversing ? <Paper withBorder p="sm"><Text fw={700}>{reversing.name}</Text><Text size="sm" c="dimmed">{reversing.barcode}</Text></Paper> : null}
+        <Alert color="yellow">O pagamento externo não é estornado automaticamente. A reversão também não cancela uma nota já autorizada na SEFAZ.</Alert>
+        {reversalError ? <Alert color="red" role="alert">{reversalError}</Alert> : null}
+        <Group justify="flex-end"><Button variant="default" onClick={closeReversal} disabled={reversalBusy}>Voltar</Button><Button color="red" onClick={confirmReversal} loading={reversalBusy}>Confirmar reversão</Button></Group>
+      </Stack>
+    </Modal>
     <PageHeading title="Vendas e saídas" description="Veja o que saiu do estoque por período, marca e tipo de peça." action={<Button variant="default" leftSection={<IconRefresh size={17} />} onClick={load}>Atualizar</Button>} />
     <Paper withBorder radius="md" p="md" mb="md"><Group align="flex-end" wrap="wrap"><Select label="Período" value={filters.period} onChange={(value) => updateFilter('period', value)} data={[{ value: 'week', label: 'Esta semana' }, { value: 'month', label: 'Este mês' }, { value: 'year', label: 'Este ano' }]} w={170} /><Select label="Marca" value={filters.brand} onChange={(value) => updateFilter('brand', value)} data={brands} w={190} /><Select label="Tipo de peça" value={filters.category} onChange={(value) => updateFilter('category', value)} data={categories} w={190} /><Select label="Pagamento" value={filters.payment} onChange={(value) => updateFilter('payment', value)} data={[{ value: 'all', label: 'Todos' }, { value: 'pix', label: 'Pix' }, { value: 'cash', label: 'Dinheiro' }, { value: 'credit', label: 'Cartão de crédito' }, { value: 'debit', label: 'Cartão de débito' }]} w={190} /><TextInput label="Buscar produto ou código" value={filters.query} onChange={(event) => updateFilter('query', event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') load(); }} w={230} /></Group></Paper>
     {state.error ? <Alert color="red" mb="md" title="Não foi possível carregar o relatório" icon={<IconRefresh size={18} />}><Text size="sm">{state.error.message}</Text><Button mt="sm" size="xs" variant="default" onClick={load}>Tentar novamente</Button></Alert> : null}
     {state.loading && !state.report ? <Paper withBorder radius="md" p="xl"><Text c="dimmed">Carregando vendas e saídas…</Text></Paper> : <>
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} mb="md"><MetricCard label="Faturamento" value={money(report.summary.revenue)} /><MetricCard label="Vendas" value={integer.format(reportNumber(report.summary.sales))} /><MetricCard label="Peças que saíram" value={integer.format(reportNumber(report.summary.items))} /><MetricCard label="Ticket médio" value={money(report.summary.average_ticket)} /></SimpleGrid>
       <SimpleGrid cols={{ base: 1, lg: 2 }} mb="md"><ReportBars title="Saída por tipo de peça" rows={report.by_category} /><ReportBars title="Saída por marca" rows={report.by_brand} /></SimpleGrid>
-      <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="md"><Box><Title order={3}>Detalhamento das saídas</Title><Text size="sm" c="dimmed">{integer.format((report.rows || []).length)} linhas no período selecionado</Text></Box><Badge color="brand" variant="light">Estoque rastreável</Badge></Group>{report.rows && report.rows.length ? <ScrollArea><Table highlightOnHover><Table.Thead><Table.Tr><Table.Th>DATA</Table.Th><Table.Th>PRODUTO</Table.Th><Table.Th>MARCA / TIPO</Table.Th><Table.Th>QTD.</Table.Th><Table.Th ta="right">TOTAL</Table.Th><Table.Th>PAGAMENTO</Table.Th><Table.Th>FISCAL</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{report.rows.map((row, index) => <Table.Tr key={`${row.sale_id}-${row.barcode || index}`}><Table.Td>{historyDate(row.created_at)}</Table.Td><Table.Td><Text fw={600}>{row.name || 'Produto'}</Text><Text size="xs" c="dimmed" ff="monospace">{row.barcode || row.internal_code || '—'}</Text></Table.Td><Table.Td>{[row.brand, row.category].filter(Boolean).join(' · ') || 'Sem classificação'}</Table.Td><Table.Td>{integer.format(reportNumber(row.quantity))}</Table.Td><Table.Td ta="right">{money(row.line_total)}</Table.Td><Table.Td>{valueText(row.payment).toUpperCase()}</Table.Td><Table.Td><Badge color={row.fiscal_status === 'authorized' ? 'brand' : 'yellow'} variant="light">{reportStatus(row.fiscal_status)}</Badge></Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea> : <EmptyState title="Nenhuma saída encontrada" text="Altere o período ou os filtros para consultar outras vendas." icon={<IconChartBar size={32} />} />}</Paper>
+      <Paper withBorder radius="md" p="lg"><Group justify="space-between" mb="md"><Box><Title order={3}>Detalhamento das saídas</Title><Text size="sm" c="dimmed">{integer.format((report.rows || []).length)} linhas no período selecionado</Text></Box><Badge color="brand" variant="light">Estoque rastreável</Badge></Group>{report.rows && report.rows.length ? <ScrollArea><Table highlightOnHover><Table.Thead><Table.Tr><Table.Th>DATA</Table.Th><Table.Th>PRODUTO</Table.Th><Table.Th>MARCA / TIPO</Table.Th><Table.Th>QTD.</Table.Th><Table.Th ta="right">TOTAL</Table.Th><Table.Th>PAGAMENTO</Table.Th><Table.Th>FISCAL</Table.Th><Table.Th>AÇÃO</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{report.rows.map((row, index) => <Table.Tr key={`${row.sale_id}-${row.barcode || index}`}><Table.Td>{historyDate(row.created_at)}</Table.Td><Table.Td><Text fw={600}>{row.name || 'Produto'}</Text><Text size="xs" c="dimmed" ff="monospace">{row.barcode || row.internal_code || '—'}</Text></Table.Td><Table.Td>{[row.brand, row.category].filter(Boolean).join(' · ') || 'Sem classificação'}</Table.Td><Table.Td>{integer.format(reportNumber(row.quantity))}</Table.Td><Table.Td ta="right">{money(row.line_total)}</Table.Td><Table.Td>{valueText(row.payment).toUpperCase()}</Table.Td><Table.Td><Badge color={row.fiscal_status === 'authorized' ? 'brand' : 'yellow'} variant="light">{reportStatus(row.fiscal_status)}</Badge></Table.Td><Table.Td><Tooltip label="Devolver ao estoque e cancelar a venda"><Button size="compact-xs" variant="light" color="red" aria-label={`Reverter venda ${row.sale_id}`} disabled={reversalBusy} leftSection={<IconRotateClockwise size={17} />} onClick={() => { setReversing(row); setReversalError(''); }}>Reverter</Button></Tooltip></Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea> : <EmptyState title="Nenhuma saída encontrada" text="Altere o período ou os filtros para consultar outras vendas." icon={<IconChartBar size={32} />} />}</Paper>
     </>}
   </>;
 }
@@ -633,17 +693,20 @@ function HistoryPage() {
   const [state, setState] = useState({ loading: true, rows: [], error: null });
   const load = () => { setState((current) => ({ ...current, loading: true, error: null })); callHost('history.list', {}).then((data) => setState({ loading: false, rows: data && Array.isArray(data.items) ? data.items : [], error: null })).catch((error) => setState({ loading: false, rows: [], error })); };
   useEffect(() => { load(); }, []);
-  return <><PageHeading title="Histórico" description="Operações registradas no laboratório." /><Paper withBorder radius="md" p="lg">{state.loading ? <Text c="dimmed">Carregando histórico…</Text> : state.error ? <Alert color="red" title="Não foi possível carregar o histórico" icon={<IconRefresh size={18} />}><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.rows.length ? <ScrollArea><Table><Table.Thead><Table.Tr><Table.Th>OPERAÇÃO</Table.Th><Table.Th>CÓDIGO</Table.Th><Table.Th>MOVIMENTO</Table.Th><Table.Th>DATA</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{state.rows.map((row, index) => <Table.Tr key={row.id || index}><Table.Td>{historyReason(row.reason)}</Table.Td><Table.Td ff="monospace">{row.barcode || row.sic_document_id || '—'}</Table.Td><Table.Td>{historyMovement(row.delta)}</Table.Td><Table.Td>{historyDate(row.created_at)}</Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea> : <EmptyState title="Nenhum registro por aqui" text="As operações aparecerão nesta tela conforme você usar o sistema." icon={<IconHistory size={32} />} />}</Paper></>;
+  return <><PageHeading title="Histórico" description="Operações registradas no histórico da loja." /><Paper withBorder radius="md" p="lg">{state.loading ? <Text c="dimmed">Carregando histórico…</Text> : state.error ? <Alert color="red" title="Não foi possível carregar o histórico" icon={<IconRefresh size={18} />}><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.rows.length ? <ScrollArea><Table><Table.Thead><Table.Tr><Table.Th>OPERAÇÃO</Table.Th><Table.Th>CÓDIGO</Table.Th><Table.Th>MOVIMENTO</Table.Th><Table.Th>DATA</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{state.rows.map((row, index) => <Table.Tr key={row.id || index}><Table.Td>{historyReason(row.reason)}</Table.Td><Table.Td ff="monospace">{row.barcode || row.sic_document_id || '—'}</Table.Td><Table.Td>{historyMovement(row.delta)}</Table.Td><Table.Td>{historyDate(row.created_at)}</Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea> : <EmptyState title="Nenhum registro por aqui" text="As operações aparecerão nesta tela conforme você usar o sistema." icon={<IconHistory size={32} />} />}</Paper></>;
 }
 
 function LabelsPage() {
   const [state, setState] = useState({ loading: true, html: '', error: null });
-  const load = () => { setState((current) => ({ ...current, loading: true, error: null })); callHost('labels.preview', {}).then((data) => setState({ loading: false, html: data && data.html ? data.html : '', error: null })).catch((error) => setState({ loading: false, html: '', error })); };
+  const [previewZoom, setPreviewZoom] = useState('150');
+  const load = () => { setState((current) => ({ ...current, loading: true, error: null })); callHost('labels.preview', {}).then((data) => setState({ loading: false, html: data && data.html ? data.html : '', error: null })).catch((error) => setState((current) => ({ ...current, loading: false, error }))); };
   useEffect(() => { load(); }, []);
   const exportLabels = () => callHost('labels.export', {}).catch((error) => setState((current) => ({ ...current, error })));
-  return <><PageHeading title="Etiquetas" description="Confira as etiquetas individuais antes de exportar." action={<Button color="brand" leftSection={<IconFileExport size={17} />} onClick={exportLabels}>Exportar etiquetas</Button>} /><Paper withBorder radius="md" p="lg" className="labels-preview">{state.loading ? <Text c="dimmed">Carregando prévia…</Text> : state.error ? <Alert color="red" title="Não foi possível carregar as etiquetas"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.html ? <iframe title="Prévia das etiquetas" srcDoc={state.html} sandbox="" /> : <EmptyState title="Nenhuma etiqueta disponível" text="Cadastre peças com saldo disponível para gerar a prévia." icon={<IconTag size={32} />} />}</Paper></>;
+  const previewHtml = state.html.replace('<body>', `<style>@media screen{.label{zoom:${Number(previewZoom) / 100}}}</style><body>`);
+  return <><PageHeading title="Etiquetas" description="Confira as etiquetas individuais antes de exportar." action={<Button color="brand" leftSection={<IconFileExport size={17} />} onClick={exportLabels}>Exportar etiquetas</Button>} />
+    <Paper withBorder radius="md" p="md" mb="md"><Group justify="space-between" align="flex-end"><Box><Text fw={700}>Prévia ampliada</Text><Text size="sm" c="dimmed">A ampliação muda apenas a visualização. A impressão mantém 50 × 30 mm.</Text></Box><Select label="Ampliação da prévia" value={previewZoom} onChange={(value) => setPreviewZoom(value || '150')} data={['100', '125', '150', '200'].map((value) => ({ value, label: `${value}%` }))} w={160} /></Group></Paper>
+    <Paper withBorder radius="md" p="sm" className="labels-preview">{state.loading ? <Text c="dimmed">Carregando prévia...</Text> : state.error ? <Alert color="red" title="Não foi possível carregar as etiquetas"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.html ? <iframe title="Prévia das etiquetas" srcDoc={previewHtml} sandbox="" /> : <EmptyState title="Nenhuma etiqueta disponível" text="Cadastre peças com saldo disponível para gerar a prévia." icon={<IconTag size={32} />} />}</Paper></>;
 }
-
 function SettingsPage() {
   const [state, setState] = useState({ info: null, error: null });
   const [activationCode, setActivationCode] = useState('');
@@ -695,7 +758,7 @@ function SettingsPage() {
       <Paper withBorder radius="md" p="lg">
         <Title order={3}>Operação automática</Title>
         <Text c="dimmed" mt="xs">Produtos e vendas são enviados e confirmados sem etapas técnicas para você.</Text>
-        <Group mt="lg"><Badge color={status.color} variant="light">{status.label}</Badge><Text size="sm">Ambiente {info && info.mode ? info.mode : 'laboratório'}</Text></Group>
+        <Group mt="lg"><Badge color={status.color} variant="light">{status.label}</Badge><Text size="sm">Ambiente {info && info.mode ? info.mode : 'de testes'}</Text></Group>
       </Paper>
       <Paper withBorder radius="md" p="lg">
         <Title order={3}>Precisa de ajuda?</Title>
@@ -711,7 +774,7 @@ function SettingsPage() {
   </>;
 }
 
-function EditDrawer({ unit, onClose, onSave, busy }) {
+function EditDrawer({ unit, onClose, onSave, busy, brands, categories }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [draft, setDraft] = useState(null);
   useEffect(() => { setDraft(unit ? makeDraftFromUnit(unit) : null); }, [unit]);
@@ -727,8 +790,8 @@ function EditDrawer({ unit, onClose, onSave, busy }) {
     <Stack>
       <TextInput label="Nome do produto" required value={draft.name} onChange={(event) => update('name', event.currentTarget.value)} />
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
-        <TextInput label="Marca" value={draft.brand} onChange={(event) => update('brand', event.currentTarget.value)} />
-        <TextInput label="Tipo de peça" value={draft.category} onChange={(event) => update('category', event.currentTarget.value)} />
+        <Autocomplete label="Marca" data={brands} value={draft.brand} onChange={(value) => update('brand', value)} />
+        <Autocomplete label="Tipo de peça" data={categories} value={draft.category} onChange={(value) => update('category', value)} />
         <TextInput label="Código interno" value={draft.internal_code} onChange={(event) => update('internal_code', event.currentTarget.value)} />
       </SimpleGrid>
       <SimpleGrid cols={2}>
@@ -740,7 +803,7 @@ function EditDrawer({ unit, onClose, onSave, busy }) {
         <MoneyInput label="Preço de venda" required value={draft.price} onChange={(value) => update('price', value)} />
       </SimpleGrid>
       <TextInput label="Localização" value={draft.location} onChange={(event) => update('location', event.currentTarget.value)} />
-      <ProductPhotoField value={draft.photo} onChange={(value) => update('photo', value)} disabled={busy} onBusyChange={setPhotoBusy} />
+      <ProductPhotoField value={draft.photos} onChange={(value) => update('photos', value)} disabled={busy} onBusyChange={setPhotoBusy} />
       <Textarea label="Observações" value={draft.notes} onChange={(event) => update('notes', event.currentTarget.value)} />
       <Text fw={700}>Dados fiscais</Text>
       <SimpleGrid cols={2}>{[...fiscalTextKeys, ...fiscalNumberKeys].map((key) => <TextInput key={key} label={fiscalLabels[key]} value={valueText(draft.fiscal[key])} onChange={(event) => updateFiscal(key, event.currentTarget.value)} />)}</SimpleGrid>

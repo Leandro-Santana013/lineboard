@@ -53,8 +53,7 @@ class _LocalProductFormState extends State<LocalProductForm> {
       key: TextEditingController(),
   };
   bool busy = false;
-  ProductPhoto? photo;
-  String? uploadedPhotoPath;
+  List<ProductPhotoSelection> photos = [];
   String? error;
   List<CatalogItem>? created;
   @override
@@ -92,13 +91,24 @@ class _LocalProductFormState extends State<LocalProductForm> {
       error = null;
     });
     try {
-      if (pending == null && photo != null && uploadedPhotoPath == null) {
-        uploadedPhotoPath = await widget.gateway.uploadPhoto(photo!);
+      final photoPaths = <String>[];
+      if (pending == null) {
+        for (final selection in photos) {
+          if (selection.photo != null) {
+            selection.uploadedPath ??= await widget.gateway.uploadPhoto(
+              selection.photo!,
+            );
+            photoPaths.add(selection.uploadedPath!);
+          } else if (selection.path != null) {
+            photoPaths.add(selection.path!);
+          }
+        }
       }
       final result = pending != null
           ? await widget.gateway.retryProduct()
           : await widget.gateway.createProduct({
-              'photo': uploadedPhotoPath ?? '',
+              'photo': photoPaths.isEmpty ? '' : photoPaths.first,
+              'photos': photoPaths,
               for (final entry in fields.entries)
                 entry.key: entry.key == 'cost' || entry.key == 'price'
                     ? money(entry.value.text)!
@@ -180,7 +190,7 @@ class _LocalProductFormState extends State<LocalProductForm> {
           padding: const EdgeInsets.all(24),
           children: [
             Text(
-              '${created!.length} peças cadastradas no desktop. Cada etiqueta identifica uma unidade.',
+              '${created!.length} peças cadastradas no desktop. Cada etiqueta tem somente código de barras.',
             ),
             for (final item in created!)
               Card(
@@ -242,11 +252,10 @@ class _LocalProductFormState extends State<LocalProductForm> {
               ),
               field(fields['location']!, 'Localização', max: 80),
               ProductPhotoField(
-                photo: photo,
+                photos: photos,
                 enabled: !busy,
                 onChanged: (value) => setState(() {
-                  photo = value;
-                  uploadedPhotoPath = null;
+                  photos = value;
                 }),
               ),
               field(fields['notes']!, 'Observações', max: 4000),

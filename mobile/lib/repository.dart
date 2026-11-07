@@ -273,20 +273,42 @@ class Repository {
   Future<String> uploadPhoto(String org, ProductPhoto photo) async {
     _checkSession();
     ProductPhoto.validate(photo.bytes);
-    final path = '$org/${const Uuid().v4()}.${photo.extension}';
-    await client.storage
-        .from('product-photos')
-        .uploadBinary(
-          path,
-          photo.bytes,
-          fileOptions: FileOptions(contentType: photo.contentType),
-        );
+    final response = await client.functions.invoke(
+      'product-photos',
+      body: {
+        'kind': 'photo.upload',
+        'organization_id': org,
+        'content_type': photo.contentType,
+        'data': base64Encode(photo.bytes),
+      },
+    );
     _checkSession();
-    return path;
+    final data = response.data;
+    if (data is! Map || data['photo_path'] is! String) {
+      throw StateError('PHOTO_UPLOAD_FAILED');
+    }
+    return data['photo_path'] as String;
   }
 
-  Future<String> photoUrl(String path) =>
-      client.storage.from('product-photos').createSignedUrl(path, 300);
+  Future<String> photoUrl(String path) async {
+    _checkSession();
+    final slash = path.indexOf('/');
+    final organization = slash < 1 ? '' : path.substring(0, slash);
+    final response = await client.functions.invoke(
+      'product-photos',
+      body: {
+        'kind': 'photo.url',
+        'organization_id': organization,
+        'photo_path': path,
+      },
+    );
+    _checkSession();
+    final data = response.data;
+    if (data is! Map || data['url'] is! String) {
+      throw StateError('PHOTO_NOT_FOUND');
+    }
+    return data['url'] as String;
+  }
 
   Future<void> updateProduct(
     CatalogItem item,

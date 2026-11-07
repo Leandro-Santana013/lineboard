@@ -2,8 +2,9 @@
 
 ## Comportamento
 
-- Uma imagem opcional por produto, compartilhada pelas cores, tamanhos e peças.
-- Selecionar, visualizar, substituir e remover a foto ao cadastrar ou editar.
+- Até seis imagens opcionais por produto, compartilhadas pelas cores, tamanhos e peças.
+- Selecionar, visualizar e remover imagens ao cadastrar ou editar; novas imagens
+  são adicionadas à galeria existente.
 - JPG/JPEG (`.jpg` e `.jpeg`), PNG e WebP, até 5 MB. No celular, galeria ou câmera.
 - Envio online ao bucket privado `product-photos` já existente. Referências estáveis
   `organizacao/arquivo.ext` ficam nos cadastros; URLs temporárias servem somente à exibição.
@@ -13,6 +14,18 @@
   de código de barras não passa a incluir a imagem do produto.
 - Não apagar imagens antigas automaticamente: respostas incertas e operações em
   recuperação podem continuar usando essas referências.
+
+## Cloudflare R2
+
+O armazenamento primario pode ser Cloudflare R2 sem expor credenciais aos
+clientes. Configure os secrets na Edge Function `product-photos` e em
+`sic-sync`: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+`R2_BUCKET`, `R2_ENDPOINT` e, opcionalmente, `R2_REGION=auto`.
+
+Uploads novos vao para R2 quando esses secrets existem. URLs de referencias
+antigas continuam tentando o bucket privado do Supabase, permitindo migracao
+gradual. As chaves R2 nao devem ser colocadas no APK, no `Lineboard.exe`, no
+instalador nem em `ProgramData`.
 
 ## Etapas
 
@@ -35,8 +48,11 @@ testes locais não comprovam armazenamento remoto nem câmera física.
 
 Ordem de publicação:
 
-1. Aplicar `202611020005_product_photos.sql` com as migrations anteriores.
-2. Publicar `supabase functions deploy sic-sync --use-api`.
+1. Aplicar as migrations em ordem, incluindo
+   `202611020005_product_photos.sql`, `202611070001_r2_product_photos.sql` e
+   `202611070002_photos_reversal.sql`.
+2. Configurar os secrets R2 nas duas funções quando R2 for usado e publicar
+   `supabase functions deploy sic-sync product-photos --use-api`.
 3. Executar `desktop/scripts/build.ps1` com o Lineboard fechado. O script compila
    a interface e o executável e instala o conjunto completo. A cópia de validação inicial foi compilada separadamente em
    `.local/product-photos-desktop/Lineboard.exe` porque a instalação atual estava aberta.

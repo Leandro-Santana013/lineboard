@@ -44,7 +44,7 @@ namespace Lineboard {
    sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);
    if(this.realtime!=null)this.realtime.SharedCartChanged+=backgroundSync.Request;
    backgroundSync.Completed+=OnBackgroundSyncCompleted;
-   Text="Lineboard • Loja e estoque • Laboratório";Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);StartPosition=FormStartPosition.CenterScreen;ClientSize=new Size(1224,794);MinimumSize=new Size(1180,740);if(largeCapture)ClientSize=new Size(1400,960);
+   Text="Linesboard • Loja e estoque";Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);StartPosition=FormStartPosition.CenterScreen;ClientSize=new Size(1224,794);MinimumSize=new Size(1180,740);if(largeCapture)ClientSize=new Size(1400,960);
    if(preview){ShowInTaskbar=false;WindowState=FormWindowState.Normal;}
    Controls.Add(webView);
    Shown+=OnShown;FormClosed+=OnClosed;
@@ -175,7 +175,7 @@ namespace Lineboard {
    var captureFullPath=Path.GetFullPath(capturePath);var captureDirectory=Path.GetDirectoryName(captureFullPath);var captureName=Path.GetFileNameWithoutExtension(captureFullPath);
    string productCapturePath=Path.Combine(captureDirectory,captureName+"-product.png");
    var pages=new[]{"Novo produto","Histórico","Loja e estoque"};
-   var markers=new[]{"Cores, tamanhos e quantidades","Operações registradas no laboratório.","Suas peças e o caixa em um só lugar."};
+   var markers=new[]{"Cores, tamanhos e quantidades","Operações registradas no histórico.","Suas peças e o caixa em um só lugar."};
    for(var index=0;index<pages.Length;index++) {
     if(!await ClickTextAsync(pages[index])||!await WaitForDomTextAsync(markers[index]))throw new DomainError("WEBVIEW_NAVIGATION_FAILED");
     if(index==0) {

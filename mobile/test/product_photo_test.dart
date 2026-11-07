@@ -42,26 +42,27 @@ void main() {
     );
   });
   testWidgets('selected image has preview and can be removed', (tester) async {
-    ProductPhoto? photo = ProductPhoto(png);
+    var photos = [ProductPhotoSelection.local(ProductPhoto(png))];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: StatefulBuilder(
             builder: (context, setState) => ProductPhotoField(
-              photo: photo,
-              onChanged: (value) => setState(() => photo = value),
+              photos: photos,
+              onChanged: (value) => setState(() => photos = value),
             ),
           ),
         ),
       ),
     );
     expect(find.byType(Image), findsOneWidget);
+    expect(find.text('1/6'), findsOneWidget);
     expect(find.text('Escolher imagem'), findsOneWidget);
     expect(find.text('Tirar foto'), findsOneWidget);
-    await tester.tap(find.text('Remover imagem'));
+    await tester.tap(find.text('Remover 1'));
     await tester.pump();
-    expect(photo, isNull);
+    expect(photos, isEmpty);
     expect(find.byType(Image), findsNothing);
-    expect(find.text('Remover imagem'), findsNothing);
+    expect(find.text('Remover 1'), findsNothing);
   });
 }

@@ -43,6 +43,20 @@ test('desktop photo is projected to the private mobile catalog for every variant
  assert.equal(rows.length,2);assert.ok(rows.every(x=>x.photo_path===photo));
 });
 
+test('mobile product creation stores and projects all tenant-scoped photos',async()=>{
+ const request=randomUUID();
+ const product={name:'Mobile gallery',tracking:'individual',photo_path:photo,photo_paths:[photo,replacement],
+  variants:[{color:'Preta',size:'M',quantity:1}]};
+ await as(user);
+ const created=(await db.query('select create_product($1,$2,$3) id',[org,request,JSON.stringify(product)])).rows[0].id;
+ const stored=(await db.query('select photo_path,photo_paths from products where id=$1',[created])).rows[0];
+ assert.equal(stored.photo_path,photo);assert.deepEqual(stored.photo_paths,[photo,replacement]);
+ const catalog=(await db.query('select photo_path,photo_paths from mobile_catalog where product_id=$1',[created])).rows[0];
+ assert.equal(catalog.photo_path,photo);assert.deepEqual(catalog.photo_paths,[photo,replacement]);
+ const replay=await db.query('select create_product($1,$2,$3) id',[org,request,JSON.stringify(product)]);
+ assert.equal(replay.rows[0].id,created);
+});
+
 test('replacement and removal reach all desktop snapshots without changing stock; retries and omitted fields preserve photo',async()=>{
  const first=unit(),second=unit({product_id:first.product_id,size:'G'});const original=event(first);
  await apply(original);await apply(event(second));
@@ -62,11 +76,14 @@ test('replacement and removal reach all desktop snapshots without changing stock
  assert.equal((await db.query('select count(*)::int n from stock_movements where stock_item_id in ($1,$2)',[first.stock_item_id,second.stock_item_id])).rows[0].n,2);
 });
 
-test('foreign, missing, URL and malformed photos roll back new SIC imports and metadata edits',async()=>{
- for(const path of [foreign,`${org}/${randomUUID()}.png`,'https://example.com/photo.png',`${org}/../other.png`]){
+test('foreign, URL and malformed photos roll back while external R2 references are accepted',async()=>{
+ for(const path of [foreign,'https://example.com/photo.png',`${org}/../other.png`]){
   const item=unit({photo_path:path});await assert.rejects(apply(event(item)),/INVALID_PHOTO/);
   await as(user);assert.equal((await db.query('select count(*)::int n from stock_items where id=$1',[item.stock_item_id])).rows[0].n,0);
  }
+ const external=`${org}/${randomUUID()}.png`,externalItem=unit({photo_path:external});
+ await apply(event(externalItem));
+ await as(user);assert.equal((await db.query('select photo_path from products where id=$1',[externalItem.product_id])).rows[0].photo_path,external);
  const item=unit();await apply(event(item));
  await assert.rejects(edit(item.product_id,{photo_path:foreign}),/INVALID_PHOTO/);
  await as(outsider);await assert.rejects(db.query('select update_product($1,$2,$3)',[org,item.product_id,JSON.stringify({photo_path:null})]),/FORBIDDEN/);
@@ -88,4 +105,19 @@ test('editing a photo cannot invalidate an active checkout claim',async()=>{
  await db.query('select claim_sic_checkout($1,$2,$3,$4)',[hash,source,request,JSON.stringify([item])]);
  await assert.rejects(edit(item.product_id,{photo_path:replacement}),/CHECKOUT_IN_PROGRESS/);
  await as(null,'service_role');await db.query('select release_sic_checkout($1,$2,$3)',[hash,source,request]);
+});
+
+test('reversing a SIC sale restores cloud stock, link revision and is idempotent',async()=>{
+ const item=unit();await apply(event(item));
+ const saleId=randomUUID();
+ const sale={event_id:randomUUID(),instance_id:source,mode:'production',kind:'sale.confirmed',payload:{sale_id:saleId,items:[item],total:30,payment:'pix'}};
+ assert.equal((await apply(sale)).state,'applied');
+ const reversal={event_id:randomUUID(),instance_id:source,mode:'production',kind:'sale.reversed',payload:{sale_id:saleId}};
+ const first=await apply(reversal);assert.equal(first.state,'applied');assert.equal(first.reversed,true);
+ const replay=await apply(reversal);assert.equal(replay.replayed,true);
+ await as(user);
+ assert.equal((await db.query('select quantity from stock_items where id=$1',[item.stock_item_id])).rows[0].quantity,1);
+ assert.equal((await db.query("select count(*)::int n from stock_movements where stock_item_id=$1 and reason='sale_reversal'",[item.stock_item_id])).rows[0].n,1);
+ const link=(await db.query('select last_quantity,last_revision,snapshot->>\'quantity\' quantity from sic_unit_links where stock_item_id=$1',[item.stock_item_id])).rows[0];
+ assert.equal(link.last_quantity,1);assert.equal(link.last_revision,3);assert.equal(link.quantity,'1');
 });
