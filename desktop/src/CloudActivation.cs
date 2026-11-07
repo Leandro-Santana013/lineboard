@@ -13,7 +13,10 @@ namespace Lineboard {
   const string DefaultSupabaseUrl="https://isktnezzanqpcrkkqldw.supabase.co";
   readonly SicStore store;
 
-  public CloudActivation(SicStore store) { this.store=store??throw new ArgumentNullException("store"); }
+  public CloudActivation(SicStore store) {
+   if(store==null)throw new ArgumentNullException("store");
+   this.store=store;
+  }
 
   public Dictionary<string,object> Activate(string code,string deviceName=null) {
    code=NormalizeCode(code);if(!Regex.IsMatch(code,@"^LB-[A-Z0-9]{4}(?:-[A-Z0-9]{4}){2}$"))throw new DomainError("ACTIVATION_INVALID");
