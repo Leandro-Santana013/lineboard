@@ -204,7 +204,7 @@ class _ProductFormState extends State<ProductForm> {
               style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text('Abra cada etiqueta para compartilhar e imprimir.'),
+            const Text('Os produtos novos são impressos somente com código de barras.'),
             const SizedBox(height: 24),
             for (final item in labels!)
               Card(

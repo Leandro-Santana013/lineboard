@@ -4,6 +4,7 @@ class CatalogItem {
   const CatalogItem(this.data);
   final Map<String, dynamic> data;
   String get barcode => data['barcode'] as String;
+  bool get qrOnly => data['qr_only'] == true;
   String get name => data['name'] as String;
   String get tracking => data['tracking'] as String;
   String get variant => [

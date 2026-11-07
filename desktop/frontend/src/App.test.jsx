@@ -401,6 +401,23 @@ describe('Lineboard frontend', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
+  it('generates local fictional QR labels from the labels page', async () => {
+    const fixtureHtml = '<!doctype html><html><body>TESTE QR SLB-900000000001</body></html>';
+    setBridgeMock(async ({ action, payload }) => {
+      calls.push({ action, payload });
+      if (action === 'bootstrap') return { data: bootstrap() };
+      if (action === 'labels.preview') return { data: { html: '<!doctype html><html><body>Etiquetas</body></html>', test_fixtures_available: true } };
+      if (action === 'labels.fixtures') return { data: { html: fixtureHtml, test_fixtures_available: true } };
+      return { data: {} };
+    });
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: 'Etiquetas' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar produtos QR de teste' }));
+    await waitFor(() => expect(calls.some((call) => call.action === 'labels.fixtures')).toBe(true));
+    await waitFor(() => expect(document.querySelector('iframe')?.getAttribute('srcdoc')).toContain('TESTE QR SLB-900000000001'));
+  });
+
   it('shows sales and outflow dashboard with period and classification data', async () => {
     const report = {
       summary: { revenue: 199.8, sales: 2, items: 3, average_ticket: 99.9 },

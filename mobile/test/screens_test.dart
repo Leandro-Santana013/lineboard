@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:barcode_widget/barcode_widget.dart';
 import 'package:lineboard_mobile/app.dart';
 import 'package:lineboard_mobile/domain.dart';
 import 'package:lineboard_mobile/scan_label.dart';
@@ -39,6 +40,12 @@ void main() {
     expect(result.code, 'SLB-000000000002');
   });
 
+  test('scanner accepts the Lineboard identifier decoded from a QR code', () {
+    final result = selectBarcode(['SLB-900000000001']);
+
+    expect(result.code, 'SLB-900000000001');
+  });
+
   testWidgets('missing configuration has an honest setup screen', (
     tester,
   ) async {
@@ -66,7 +73,29 @@ void main() {
       ),
     );
     expect(find.text('Leash Pro'), findsOneWidget);
+    expect(find.byType(BarcodeWidget), findsNWidgets(1));
     expect(find.text('Azul · 7 pés'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('new product label shows barcode only', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LabelCard(
+            CatalogItem({
+              'name': 'Novo QR',
+              'barcode': 'SLB-000000000002',
+              'color': 'Preto',
+              'size': 'M',
+              'tracking': 'individual',
+              'qr_only': false,
+            }),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Novo QR'), findsOneWidget);
+    expect(find.byType(BarcodeWidget), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

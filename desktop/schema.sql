@@ -10,7 +10,7 @@ BEGIN
  );
  CREATE TABLE lineboard.Units (
   id uniqueidentifier PRIMARY KEY, product_id uniqueidentifier NOT NULL, variant_id uniqueidentifier NOT NULL,
-  sic_id int NOT NULL UNIQUE, barcode varchar(20) NOT NULL UNIQUE, category nvarchar(40) NOT NULL DEFAULT '', color nvarchar(40) NOT NULL,
+  sic_id int NOT NULL UNIQUE, barcode varchar(20) NOT NULL UNIQUE, qr_only bit NOT NULL CONSTRAINT DF_lineboard_Units_qr_only DEFAULT 0, category nvarchar(40) NOT NULL DEFAULT '', color nvarchar(40) NOT NULL,
   size nvarchar(40) NOT NULL, location nvarchar(80) NOT NULL, photo nvarchar(1000) NOT NULL,
   expected_quantity int NOT NULL CHECK(expected_quantity IN (0,1)), revision bigint NOT NULL DEFAULT 1,
   created_at datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), updated_at datetime2 NOT NULL DEFAULT SYSUTCDATETIME()
@@ -42,6 +42,8 @@ END;
 
 IF OBJECT_ID('lineboard.Units') IS NOT NULL AND COL_LENGTH('lineboard.Units','category') IS NULL
   ALTER TABLE lineboard.Units ADD category nvarchar(40) NOT NULL CONSTRAINT DF_lineboard_Units_category DEFAULT '' WITH VALUES;
+IF OBJECT_ID('lineboard.Units') IS NOT NULL AND COL_LENGTH('lineboard.Units','qr_only') IS NULL
+  ALTER TABLE lineboard.Units ADD qr_only bit NOT NULL CONSTRAINT DF_lineboard_Units_qr_only DEFAULT 0 WITH VALUES;
 
 IF COL_LENGTH('lineboard.Settings','cloud_cart_version') IS NULL
   ALTER TABLE lineboard.Settings ADD cloud_cart_version bigint NOT NULL CONSTRAINT DF_lineboard_cloud_cart_version DEFAULT -1 WITH VALUES;

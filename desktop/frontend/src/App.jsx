@@ -636,13 +636,21 @@ function HistoryPage() {
 }
 
 function LabelsPage() {
-  const [state, setState] = useState({ loading: true, html: '', error: null });
-  const load = () => { setState((current) => ({ ...current, loading: true, error: null })); callHost('labels.preview', {}).then((data) => setState({ loading: false, html: data && data.html ? data.html : '', error: null })).catch((error) => setState({ loading: false, html: '', error })); };
+  const [state, setState] = useState({ loading: true, html: '', error: null, testFixturesAvailable: false, generating: false, environmentMode: 'sandbox' });
+  const load = () => { setState((current) => ({ ...current, loading: true, error: null })); callHost('labels.preview', {}).then((data) => setState({ loading: false, html: data && data.html ? data.html : '', error: null, testFixturesAvailable: Boolean(data && data.test_fixtures_available), generating: false, environmentMode: data && data.mode === 'production' ? 'production' : 'sandbox' })).catch((error) => setState((current) => ({ ...current, loading: false, error }))); };
   useEffect(() => { load(); }, []);
   const exportLabels = () => callHost('labels.export', {}).catch((error) => setState((current) => ({ ...current, error })));
-  return <><PageHeading title="Etiquetas" description="Confira as etiquetas individuais antes de exportar." action={<Button color="brand" leftSection={<IconFileExport size={17} />} onClick={exportLabels}>Exportar etiquetas</Button>} /><Paper withBorder radius="md" p="lg" className="labels-preview">{state.loading ? <Text c="dimmed">Carregando prévia…</Text> : state.error ? <Alert color="red" title="Não foi possível carregar as etiquetas"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.html ? <iframe title="Prévia das etiquetas" srcDoc={state.html} sandbox="" /> : <EmptyState title="Nenhuma etiqueta disponível" text="Cadastre peças com saldo disponível para gerar a prévia." icon={<IconTag size={32} />} />}</Paper></>;
+  const generateTestFixtures = async () => {
+    setState((current) => ({ ...current, generating: true, error: null }));
+    try {
+      const data = await callHost('labels.fixtures', {});
+      setState({ loading: false, html: data && data.html ? data.html : '', error: null, testFixturesAvailable: true, generating: false });
+    } catch (error) {
+      setState((current) => ({ ...current, generating: false, error }));
+    }
+  };
+  return <><PageHeading title="Etiquetas" description="Confira as etiquetas individuais antes de exportar." action={<Group><Button variant="default" leftSection={<IconQrcode size={17} />} loading={state.generating} disabled={!state.testFixturesAvailable} onClick={generateTestFixtures}>Gerar produtos QR de teste</Button><Button color="brand" leftSection={<IconFileExport size={17} />} onClick={exportLabels}>Exportar etiquetas</Button></Group>} /><Text size="sm" c="dimmed" mb="md">Produtos normais usam somente código de barras. O botão cria produtos fictícios com somente QR Code para testar a leitura no celular.</Text>{!state.testFixturesAvailable ? <Text size="xs" c="dimmed" mb="sm">{state.environmentMode === 'production' ? 'Abra o laboratorio local (desktop/scripts/start.ps1 -Lab) para gerar os produtos QR de teste.' : 'A geracao de produtos ficticios fica disponivel somente no laboratorio local; eles permanecem locais e nao sao sincronizados.'}</Text> : null}<Paper withBorder radius="md" p="lg" className="labels-preview">{state.loading ? <Text c="dimmed">Carregando prévia...</Text> : state.error ? <Alert color="red" title="Não foi possível carregar as etiquetas"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : state.html ? <iframe title="Prévia das etiquetas" srcDoc={state.html} sandbox="" /> : <EmptyState title="Nenhuma etiqueta disponível" text="Cadastre peças com saldo disponível para gerar a prévia." icon={<IconTag size={32} />} />}</Paper></>;
 }
-
 function SettingsPage() {
   const [state, setState] = useState({ info: null, error: null });
   const load = () => {

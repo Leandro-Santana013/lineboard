@@ -28,6 +28,7 @@ namespace Lineboard {
     if(Array.IndexOf(args,"--sync-now")>=0){try{var sync=new CloudSync(store);Emit(args,Json.Write(sync.Reconcile()));return 0;}catch(Exception error){ErrorFile(args,error.Message);throw;}}
     if(Array.IndexOf(args,"--self-test")>=0){Emit(args,Json.Write(SelfTests.Run(store,server,workspace)));return 0;}
     if(Array.IndexOf(args,"--health")>=0){Emit(args,Json.Write(store.Health()));return 0;}
+    if(Array.IndexOf(args,"--qr-test-fixtures")>=0){if(store.Production)throw new DomainError("TEST_FIXTURES_SANDBOX_ONLY");Emit(args,Json.Write(new{created=store.EnsureQrTestFixtures(),mode="sandbox",qr_only=true}));return 0;}
     if(Array.IndexOf(args,"--export-outbox")>=0){Emit(args,Json.Write(store.Outbox()));return 0;}
     if(Array.IndexOf(args,"--render-legacy-preview")>=0){Application.EnableVisualStyles();using(var previewApi=new LocalApi(store,"localhost",47831))using(var preview=new DesktopForm(store,previewApi)){preview.RenderPreview(Option(args,"--output",Path.Combine(workspace,".local","desktop-preview.png")));}return 0;}
     var legacyUi=Array.IndexOf(args,"--legacy-ui")>=0;
@@ -55,7 +56,7 @@ namespace Lineboard {
     else {using(var form=new WebDesktopForm(store,api,workspace,false,null,false,false,false,realtime)){Application.Run(form);}}
     return 0;
     }
-   }catch(Exception error){Console.Error.WriteLine(error.Message);bool command=Array.Exists(args,a=>a=="--serve"||a=="--self-test"||a=="--health"||a=="--realtime-health"||a=="--probe"||a=="--export-outbox"||a=="--render-preview"||a=="--render-web-preview"||a=="--render-legacy-preview"||a=="--web-self-test"||a=="--web-capture"||a=="--web-capture-large"||a=="--production"||a=="--confirm-production");if(!command)MessageBox.Show("Não foi possível iniciar o Lineboard.\n\n"+error.Message+"\n\nConfira a base isolada e a permissão da API local. Consulte desktop/README.md. Para usar apenas neste computador, inicie com --host localhost.","Lineboard",MessageBoxButtons.OK,MessageBoxIcon.Error);return 1;}
+   }catch(Exception error){Console.Error.WriteLine(error.Message);bool command=Array.Exists(args,a=>a=="--serve"||a=="--self-test"||a=="--health"||a=="--qr-test-fixtures"||a=="--realtime-health"||a=="--probe"||a=="--export-outbox"||a=="--render-preview"||a=="--render-web-preview"||a=="--render-legacy-preview"||a=="--web-self-test"||a=="--web-capture"||a=="--web-capture-large"||a=="--production"||a=="--confirm-production");if(!command)MessageBox.Show("Não foi possível iniciar o Lineboard.\n\n"+error.Message+"\n\nConfira a base isolada e a permissão da API local. Consulte desktop/README.md. Para usar apenas neste computador, inicie com --host localhost.","Lineboard",MessageBoxButtons.OK,MessageBoxIcon.Error);return 1;}
   }
    static string ConfiguredServer(){
     var server=Configuration.Get("LINEBOARD_SIC_SERVER");

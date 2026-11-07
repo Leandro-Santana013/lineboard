@@ -180,7 +180,7 @@ class _LocalProductFormState extends State<LocalProductForm> {
           padding: const EdgeInsets.all(24),
           children: [
             Text(
-              '${created!.length} peças cadastradas no desktop. Cada etiqueta identifica uma unidade.',
+              '${created!.length} peças cadastradas no desktop. Cada etiqueta tem somente código de barras.',
             ),
             for (final item in created!)
               Card(

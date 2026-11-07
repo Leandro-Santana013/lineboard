@@ -30,7 +30,7 @@ namespace Lineboard {
   public Dictionary<string,object> fiscal {get;set;}
  }
  public class VariantDraft { public string color {get;set;} public string size {get;set;} public int quantity {get;set;} }
- public class ProductDraft : UnitFields { public string request_id {get;set;} public List<VariantDraft> variants {get;set;} }
+ public class ProductDraft : UnitFields { public string request_id {get;set;} public List<VariantDraft> variants {get;set;} public bool qr_only {get;set;} }
  public class EditDraft : UnitFields { public string request_id {get;set;} public long revision {get;set;} }
  public class CartDraft { public string request_id {get;set;} public string barcode {get;set;} }
  public class ConfirmDraft { public string request_id {get;set;} public long version {get;set;} public string payment {get;set;} public string fiscal_document {get;set;} }

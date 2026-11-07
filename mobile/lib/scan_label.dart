@@ -20,13 +20,13 @@ class ScanPage extends StatefulWidget {
 
 class _ScanPageState extends State<ScanPage> {
   final controller = MobileScannerController(
-    formats: [BarcodeFormat.code128],
+    formats: [BarcodeFormat.code128, BarcodeFormat.qrCode],
     detectionSpeed: DetectionSpeed.normal,
     autoZoom: true,
   );
   final manual = TextEditingController();
   bool accepted = false;
-  String guidance = 'Aponte para o código e mantenha o celular firme.';
+  String guidance = 'Aponte para QR Code ou código de barras e mantenha o celular firme.';
   DateTime? lastInvalidFeedback;
   @override
   void dispose() {
@@ -404,12 +404,20 @@ class LabelCard extends StatelessWidget {
               style: const TextStyle(color: Colors.black, fontSize: 13),
             ),
           const SizedBox(height: 16),
-          BarcodeWidget(
+          if (!item.qrOnly) BarcodeWidget(
             barcode: Barcode.code128(),
             data: item.barcode,
-            height: 100,
+            height: 82,
             drawText: true,
             style: const TextStyle(color: Colors.black, fontSize: 13),
+          ),
+          if (item.qrOnly) const SizedBox(height: 12),
+          if (item.qrOnly) BarcodeWidget(
+            barcode: Barcode.qrCode(),
+            data: item.barcode,
+            width: 92,
+            height: 92,
+            drawText: false,
           ),
         ],
       ),

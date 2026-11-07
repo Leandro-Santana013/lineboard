@@ -31,7 +31,16 @@ namespace Lineboard {
    var created=store.CreateProduct(draft);var units=Units(created);var codes=units.Select(x=>(string)x["barcode"]).ToList();
    Check("five units have five unique codes",units.Count==5&&codes.Distinct().Count()==5);
    Check("Code128 includes quiet zones checksum and optimized numeric suffix",Labels.Modules("SLB-900000000001").Length==176&&Labels.Codewords("SLB-900000000001")[12]==1&&Labels.Modules(codes[0]).StartsWith("0000000000")&&Labels.Modules(codes[0]).EndsWith("0000000000"));
-   Check("label export escapes product text",Labels.Html(new[]{new Dictionary<string,object>{{"barcode",codes[0]},{"name","<script>"},{"color","Preta"},{"size","M"}}},50,30).Contains("&lt;script&gt;"));
+   var sampleLabel=new[]{new Dictionary<string,object>{{"barcode",codes[0]},{"name","<script>"},{"color","Preta"},{"size","M"}}};
+   Check("label export escapes product text",Labels.HtmlWithQr(sampleLabel,50,30).Contains("&lt;script&gt;"));
+   Check("QR SVG uses a quiet zone around its 21-module symbol",Labels.QrSvg(codes[0]).Contains("viewBox=\"0 0 29 29\"")&&Labels.QrModules(codes[0]).GetLength(0)==21);
+   Check("legacy product labels keep Code128 only",Labels.HtmlWithQr(sampleLabel,50,30).Contains("class=\"barcode\"")&&!Labels.HtmlWithQr(sampleLabel,50,30).Contains("class=\"qr\""));
+   var qrLabel=new[]{new Dictionary<string,object>{{"barcode",codes[0]},{"name","Produto QR"},{"color","Verde"},{"size","M"},{"qr_only",true}}};var qrHtml=Labels.HtmlWithQr(qrLabel,50,30);
+   Check("QR-only product labels contain QR and no Code128",qrHtml.Contains("viewBox=\"0 0 29 29\"")&&qrHtml.Contains("class=\"qr\"")&&!qrHtml.Contains("class=\"barcode\""));
+   Check("QR-only product labels center and enlarge the QR within the label",qrHtml.Contains(".qr-label .qr{left:50%;right:auto;top:50%;width:min(20mm,calc(100% - 12mm));height:min(20mm,calc(100% - 12mm));transform:translate(-50%,-25%)}"));
+   Check("label barcode adapts to narrow sizes",!Labels.HtmlWithQr(sampleLabel,40,30).Contains("width:47mm"));
+   Check("barcode test fixtures use a reserved internal code",SicStore.IsQrTestFixture(new Dictionary<string,object>{{"internal_code","LB-QR-TEST-01"}})&&!SicStore.IsQrTestFixture(new Dictionary<string,object>{{"internal_code","NORMAL-01"}}));
+   Reject("test and regular products stay in separate carts","QR_TEST_MIXED_CART",()=>SicStore.EnsureSingleFixtureGroup(new List<Dictionary<string,object>>{new Dictionary<string,object>{{"internal_code","LB-QR-TEST-01"}},new Dictionary<string,object>{{"internal_code","NORMAL-01"}}}));
    Check("five independent SIC product records",Count(store,"dbo.TABEST1")==5&&units.Select(x=>x["sic_id"]).Distinct().Count()==5);
    Check("initial receipt and five movement rows",Count(store,"dbo.TABEST2A")==1&&Count(store,"dbo.TABEST2B")==5&&Count(store,"lineboard.Movements")==5);
    Check("initial quantities are one",store.Catalog().All(x=>Convert.ToInt32(x["quantity"])==1));
