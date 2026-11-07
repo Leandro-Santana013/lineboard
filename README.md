@@ -127,6 +127,20 @@ Depois de aplicar a migration `202611070001_desktop_activation.sql` e publicar
 `activate-desktop`, o administrador gera um código temporário para cada
 computador. O código bruto aparece somente uma vez e não é salvo no banco:
 
+O jeito mais simples no Windows é usar o script PowerShell abaixo. Ele não
+exige Node.js, npm nem instalação de pacotes: faz o login por código de e-mail
+e gera o código de ativação no próprio computador administrativo. Não precisa
+ser executado no computador da loja.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\create-activation.ps1
+```
+
+O script pede somente a chave pública do Supabase na primeira execução, o
+e-mail do administrador e o código recebido por e-mail. O `ADMIN_ACCESS_TOKEN`
+fica apenas na memória durante a execução e não é salvo em arquivo.
+
 ```bash
 SUPABASE_URL="https://<projeto>.supabase.co" \
 SUPABASE_PUBLISHABLE_KEY="<chave-publica>" \
