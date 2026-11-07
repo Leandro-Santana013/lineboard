@@ -22,13 +22,19 @@ button, input, textarea { font-family: inherit; }
 .lab-dot.production { background: #ddd; }
 .page-heading h1 { letter-spacing: -.025em; }
 .inventory-card { container-type: inline-size; display: flex; flex: 1; min-height: 0; overflow: hidden; flex-direction: column; }
+.inventory-toolbar { flex-wrap: wrap; }
+.inventory-toolbar > .mantine-Group-root { flex-wrap: wrap; }
+.inventory-toolbar > .mantine-Group-root:last-child { flex: 1 1 560px; justify-content: flex-end; }
+.inventory-toolbar .mantine-TextInput-root { flex: 1 1 240px; min-width: 220px; }
+.inventory-filter-panel { background: #fafafa; }
 .inventory-scroll { flex: 1; min-height: 0; max-height: none; }
 .inventory-card .mantine-Table-th { color: #6d6d6d; font-size: 11px; letter-spacing: .04em; }
 .inventory-card .mantine-Table-td { border-bottom-color: #eaeaea; }
 .inventory-product-cell { min-width: 0; }
 .inventory-product-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .inventory-inline-barcode { display: none; white-space: nowrap; }
-.inventory-variant-cell, .inventory-price-cell, .inventory-state-badge { white-space: nowrap; }
+.inventory-variant-cell, .inventory-quantity-cell, .inventory-price-cell, .inventory-state-badge { white-space: nowrap; }
+.inventory-quantity-cell, .inventory-price-cell { font-variant-numeric: tabular-nums; }
 .inventory-state-badge { max-width: none; }
 .selected-row { background: #f2f2f2; }
 .selected-row td:first-child { box-shadow: inset 3px 0 #6a6a6a; }

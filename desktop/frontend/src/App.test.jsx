@@ -96,6 +96,29 @@ describe('Lineboard frontend', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
+  it('shows stock metrics, balance and classification filter controls', async () => {
+    setBridgeMock(({ action }) => {
+      if (action === 'bootstrap') {
+        const data = bootstrap();
+        data.catalog[1].brand = 'Outra marca';
+        data.catalog.push(unit({ stock_item_id: 'unit-4', barcode: 'SLB-000000000004', name: 'Boné urbano', brand: 'Outra marca', category: 'Acessório', color: 'Branca', size: 'Único', quantity: 0, expected_quantity: 0, internal_code: 'BON-004' }));
+        return { data };
+      }
+      return { data: {} };
+    });
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    expect(screen.getByText('4 peças rastreadas · 3 com saldo · 1 sem saldo')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Mais filtros' }));
+    expect(await screen.findByRole('combobox', { name: 'Filtrar quantidade de peças' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Filtrar por marca' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Filtrar por tipo' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Filtrar por cor' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Filtrar por tamanho' })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /Boné urbano/ })).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Boné urbano/ })).getByText('0')).toBeInTheDocument();
+  });
+
   it('prioritizes exact barcode scanning when adding a product to the caixa', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'Estoque' });
