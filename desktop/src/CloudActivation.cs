@@ -48,7 +48,11 @@ namespace Lineboard {
    if(response==null||!response.ContainsKey("activated")||!Convert.ToBoolean(response["activated"])||!response.ContainsKey("config"))throw new DomainError("ACTIVATION_CONFIG_INVALID");
    var config=Json.Map(response["config"]);var token=StringValue(config,"LINEBOARD_SYNC_TOKEN");var sync=StringValue(config,"LINEBOARD_SYNC_URL");var supabase=StringValue(config,"SUPABASE_URL");
    if(!Regex.IsMatch(token,@"^slb_live_[a-f0-9]{64}$")||!ValidHttps(sync,"/functions/v1/sic-sync")||!ValidSupabase(supabase))throw new DomainError("ACTIVATION_CONFIG_INVALID");
-   var updates=new Dictionary<string,object>();foreach(var entry in config)updates[entry.Key]=entry.Value;Configuration.Merge(updates);
+   var updates=new Dictionary<string,object>();foreach(var entry in config)updates[entry.Key]=entry.Value;
+   try{Configuration.Merge(updates);}
+   catch(UnauthorizedAccessException){throw new DomainError("ACTIVATION_CONFIG_WRITE_FAILED");}
+   catch(System.Security.SecurityException){throw new DomainError("ACTIVATION_CONFIG_WRITE_FAILED");}
+   catch(IOException){throw new DomainError("ACTIVATION_CONFIG_WRITE_FAILED");}
    return new Dictionary<string,object>{{"activated",true},{"restart_required",true},{"organization_id",response.ContainsKey("organization_id")?response["organization_id"]:null},{"instance_id",response.ContainsKey("instance_id")?response["instance_id"]:null}};
   }
 

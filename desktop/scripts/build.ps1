@@ -58,6 +58,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Native compilation failed. The installed bundl
 Copy-Item -LiteralPath (Join-Path $desktopRoot 'schema.sql') -Destination (Join-Path $bundle 'schema.sql') -Force
 
 # A separate process releases assembly file handles before installation.
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'test-configuration.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Configuration verification failed. The installed bundle was not changed.' }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'test-cart-watch.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Cart update verification failed. The installed bundle was not changed.' }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'test-discounts.ps1')

@@ -23,6 +23,9 @@ O arquivo `dist\Lineboard-Setup.exe` instala o executável, a interface React,
 `schema.sql`, as DLLs WebView2, o atalho no menu Iniciar/desktop e o WebView2
 Runtime. A configuração é gravada em `%ProgramData%\Lineboard\config.json` e
 preservada durante atualizações; não é necessário criar variáveis de ambiente.
+Se a conta Windows não puder gravar em ProgramData, a ativação grava em
+`%LocalAppData%\Lineboard\config.json`, que tem prioridade para esse usuário.
+Uma atualização posterior da ativação continua usando esse mesmo arquivo.
 Para levar também a sincronização cloud, passe `-ConfigFile` com uma cópia
 local preenchida a partir de `installer\config.example.json`. Esse arquivo
 contém credenciais privadas e não deve entrar no Git ou ser enviado junto do

@@ -18,6 +18,12 @@ O workflow do GitHub Actions compila o instalador em Windows e anexa
 `Lineboard-Setup.exe` à release. A página é publicada automaticamente a cada
 alteração em `main`.
 
+### Versão 0.2.5 (Windows)
+
+A ativação salva a configuração na pasta do usuário quando o Windows bloqueia
+a gravação em ProgramData. A gravação é atômica e preserva o arquivo anterior
+se ocorrer uma falha. Não é necessário executar o aplicativo como administrador.
+
 ### Versão 0.2.4 (Windows)
 
 O caixa recebe as leituras do celular automaticamente mesmo nas instalações

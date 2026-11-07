@@ -28,12 +28,13 @@ namespace Lineboard {
 
   public static void Merge(IDictionary<string,object> updates) {
    if(updates==null)throw new ArgumentNullException("updates");
-   EnsureLoaded();
-   foreach(var entry in updates)if(entry.Value!=null)fileValues[entry.Key]=entry.Value;
-   var path=CommonPath();var parent=Path.GetDirectoryName(path);
-   if(!String.IsNullOrWhiteSpace(parent))Directory.CreateDirectory(parent);
-   File.WriteAllText(path,Json.Write(fileValues),new System.Text.UTF8Encoding(false));
-   lock(gate)fileValues=null;
+   lock(gate){
+    EnsureLoaded();
+    var merged=new Dictionary<string,object>(fileValues,StringComparer.OrdinalIgnoreCase);
+    foreach(var entry in updates)if(entry.Value!=null)merged[entry.Key]=entry.Value;
+    ConfigurationFile.Save(Json.Write(merged),CommonPath(),LocalPath());
+    fileValues=null;
+   }
   }
 
   static void EnsureLoaded() {
@@ -60,13 +61,16 @@ namespace Lineboard {
    yield return Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"config.json");
    var common=Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
    if(!String.IsNullOrWhiteSpace(common))yield return Path.Combine(common,"Lineboard","config.json");
-   var local=Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-   if(!String.IsNullOrWhiteSpace(local))yield return Path.Combine(local,"Lineboard","config.json");
+   var local=LocalPath();if(local!=null)yield return local;
   }
 
   static string CommonPath() {
    var common=Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
    return Path.Combine(String.IsNullOrWhiteSpace(common)?AppDomain.CurrentDomain.BaseDirectory:common,"Lineboard","config.json");
+  }
+  static string LocalPath() {
+   var local=Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+   return String.IsNullOrWhiteSpace(local)?null:Path.Combine(local,"Lineboard","config.json");
   }
  }
 }

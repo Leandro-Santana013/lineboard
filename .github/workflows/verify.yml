@@ -1,6 +1,13 @@
 name: Verify
 on: [push, pull_request]
 jobs:
+  desktop-config:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test activation configuration storage
+        shell: powershell
+        run: .\desktop\scripts\test-configuration.ps1
   database:
     runs-on: ubuntu-latest
     steps:

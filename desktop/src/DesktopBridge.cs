@@ -227,7 +227,8 @@ namespace Lineboard {
     {"ACTIVATION_LIMIT_REACHED","Este código já atingiu o limite de ativações."},
     {"ACTIVATION_INSTANCE_USED","Este computador já foi ativado."},
     {"ACTIVATION_NETWORK_ERROR","Não foi possível falar com o servidor de ativação. Confira a internet e tente novamente."},
-    {"ACTIVATION_CONFIG_INVALID","A ativação retornou uma configuração inválida."}
+    {"ACTIVATION_CONFIG_INVALID","A ativação retornou uma configuração inválida."},
+    {"ACTIVATION_CONFIG_WRITE_FAILED","Não foi possível salvar a ativação neste Windows. Confira a permissão e o espaço em disco da pasta do usuário."}
    };
    return messages.ContainsKey(code)?messages[code]:"Não foi possível concluir a operação local.";
   }
