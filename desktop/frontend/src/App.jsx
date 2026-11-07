@@ -271,6 +271,7 @@ function App() {
       <Box className={`app-content ${view === 'inventory' || view === 'checkout' ? 'operation-shell' : ''}`}>
         {!hasDesktopHost() && !hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md">Abra este conteúdo pelo executável desktop para acessar o SIC.</Alert> : null}
         {hostError ? <Alert icon={<IconCloudOff size={18} />} color="yellow" mb="md" title="Desktop necessário">{hostError.message || 'Abra o Lineboard pelo aplicativo desktop para acessar o SIC.'}</Alert> : null}
+        {syncState === 'not_configured' && !hostError ? <Alert icon={<IconInfoCircle size={18} />} color="yellow" mb="md" title="Conecte esta loja ao estoque cloud">Use o código de ativação da loja em <Button variant="subtle" size="compact-sm" px={4} onClick={() => navigate('settings')}>Configurações</Button>.</Alert> : null}
         {message ? <Alert mb="md" color={message.type === 'error' ? 'red' : 'brand'} icon={message.type === 'error' ? <IconX size={18} /> : <IconCircleCheck size={18} />} withCloseButton onClose={() => setMessage(null)}>{message.text}</Alert> : null}
         {content}
       </Box>
@@ -653,6 +654,9 @@ function LabelsPage() {
 }
 function SettingsPage() {
   const [state, setState] = useState({ info: null, error: null });
+  const [activationCode, setActivationCode] = useState('');
+  const [activationBusy, setActivationBusy] = useState(false);
+  const [activationMessage, setActivationMessage] = useState(null);
   const load = () => {
     setState((current) => ({ ...current, error: null }));
     callHost('settings.info', {}).then((info) => setState({ info, error: null })).catch((error) => setState({ info: null, error }));
@@ -671,9 +675,30 @@ function SettingsPage() {
       : syncStatus === 'conflict' ? { label: 'Conflito para conferir', color: 'red' }
         : { label: 'Sincronização pendente', color: 'yellow' }
     : { label: 'Aguardando configuração', color: 'gray' };
+  const activate = async () => {
+    const code = activationCode.trim();
+    if (!code) { setActivationMessage({ type: 'error', text: 'Informe o código de ativação da loja.' }); return; }
+    setActivationBusy(true); setActivationMessage(null);
+    try {
+      await callHost('activation.activate', { code, device_name: 'Lineboard desktop' });
+      setActivationCode('');
+      setActivationMessage({ type: 'success', text: 'Computador ativado. Feche e abra o Lineboard novamente para importar os dados da loja.' });
+    } catch (error) {
+      setActivationMessage({ type: 'error', text: error.message || 'Não foi possível ativar este computador.' });
+    } finally { setActivationBusy(false); }
+  };
   return <>
     <PageHeading title="Configurações" description="O sistema trabalha em segundo plano para manter a loja atualizada." />
     {state.error ? <Alert color="red" mb="md" title="Não foi possível carregar as configurações"><Text size="sm">{state.error.message}</Text><Button mt="sm" variant="default" size="xs" onClick={load}>Tentar novamente</Button></Alert> : null}
+    {info && !info.sync_configured ? <Paper withBorder radius="md" p="lg" mb="md">
+      <Title order={3}>Ativar este computador</Title>
+      <Text c="dimmed" mt="xs">Informe o código da loja para baixar o estoque e conectar a sincronização automática.</Text>
+      <Group mt="lg" align="end">
+        <TextInput label="Código de ativação" placeholder="LB-XXXX-XXXX-XXXX" value={activationCode} onChange={(event) => setActivationCode(event.currentTarget.value.toUpperCase())} disabled={activationBusy} style={{ flex: 1 }} />
+        <Button color="brand" loading={activationBusy} onClick={activate}>Ativar computador</Button>
+      </Group>
+      {activationMessage ? <Alert mt="md" color={activationMessage.type === 'error' ? 'red' : 'brand'}>{activationMessage.text}</Alert> : null}
+    </Paper> : null}
     <SimpleGrid cols={{ base: 1, md: 2 }}>
       <Paper withBorder radius="md" p="lg">
         <Title order={3}>Operação automática</Title>

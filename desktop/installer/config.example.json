@@ -1,5 +1,5 @@
 {
-  "LINEBOARD_SIC_SERVER": ".\\SQLEXPRESS",
+  "LINEBOARD_SIC_SERVER": "(localdb)\\MSSQLLocalDB",
   "LINEBOARD_SYNC_URL": "https://SEU-PROJETO.supabase.co/functions/v1/sic-sync",
   "LINEBOARD_SYNC_TOKEN": "",
   "SUPABASE_URL": "https://SEU-PROJETO.supabase.co",

@@ -195,12 +195,27 @@ ou no controle de versão. A URL deve ser HTTPS e terminar em
 `/functions/v1/sic-sync` no domínio do projeto Supabase. `--sync-now` executa
 o mesmo ciclo imediatamente para diagnóstico ou carga inicial.
 
+O campo `LINEBOARD_SIC_SERVER` representa a instância/servidor do SQL Server,
+não o nome do banco. Se ele não estiver configurado ou apontar para uma
+instância indisponível, o desktop procura automaticamente o LocalDB padrão,
+outras instâncias LocalDB, SQL Express e instâncias registradas no Windows.
+Assim, computadores com nomes diferentes de servidor não precisam de ajuste
+manual. O catálogo do SIC continua sendo `SICNET`, que é o banco esperado pelo
+conector atual.
+
 Em uma nova máquina, abra o PowerShell como Administrador e execute uma vez
 `.\desktop\scripts\configure-cloud.ps1`. Se o SIC estiver no SQL Express,
 informe a instância, por exemplo: `.\desktop\scripts\configure-cloud.ps1 -Server '.\SQLEXPRESS'`.
 O script pede o token em campo oculto, configura as variáveis na máquina para
 todos os usuários do Windows e executa o bootstrap inicial. O token não é gravado no projeto,
 no Git nem em arquivo de log; depois disso, basta abrir o `Lineboard.exe`.
+
+Para instalações novas usando o instalador com ativação, o administrador pode
+gerar um código temporário com `node scripts/create-activation.mjs`. Abra
+**Configurações** no Lineboard, informe o código no cartão **Ativar este
+computador** e reinicie o aplicativo. A credencial e as URLs são gravadas em
+`C:\ProgramData\Lineboard\config.json`; nenhum token precisa ser digitado no
+PowerShell. O código é de uso único por padrão e expira em 24 horas.
 
 O servidor deriva a organização da credencial e registra cada instalação da loja.
 Todos os computadores dessa organização leem o mesmo estoque e o mesmo carrinho

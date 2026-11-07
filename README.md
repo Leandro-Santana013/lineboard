@@ -112,7 +112,7 @@ de demonstração ou operações falsas. `config.json` é ignorado pelo Git. A c
 4. Convide o primeiro administrador no painel Authentication > Users e execute
    `docs/bootstrap.sql`, substituindo o e-mail e o nome da loja. Repita apenas para
    novas empresas. O app não oferece criação pública de empresas.
-5. Publique `supabase functions deploy invite-member commerce sic-sync sic-command-ack --use-api`
+5. Publique `supabase functions deploy invite-member commerce sic-sync sic-command-ack activate-desktop --use-api`
    e aplique também a migration `202610310001_sic_command_bridge.sql`.
    As chaves internas padrão do Supabase
    são disponibilizadas pelo runtime (`SUPABASE_PUBLISHABLE_KEYS` e
@@ -120,6 +120,48 @@ de demonstração ou operações falsas. `config.json` é ignorado pelo Git. A c
    antigos que usam `SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY` também funcionam.
 6. Preencha `mobile/config.json` com a URL e a chave pública do projeto. Entre com
    o administrador e convide operadores no ícone de equipe.
+
+### Ativação automática do desktop
+
+Depois de aplicar a migration `202611070001_desktop_activation.sql` e publicar
+`activate-desktop`, o administrador gera um código temporário para cada
+computador. O código bruto aparece somente uma vez e não é salvo no banco:
+
+O jeito mais simples no Windows é usar o script PowerShell abaixo. Ele não
+exige Node.js, npm nem instalação de pacotes: faz o login por código de e-mail
+e gera o código de ativação no próprio computador administrativo. Não precisa
+ser executado no computador da loja.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\create-activation.ps1
+```
+
+O script pede somente a chave pública do Supabase na primeira execução, o
+e-mail do administrador e o código recebido por e-mail. O `ADMIN_ACCESS_TOKEN`
+fica apenas na memória durante a execução e não é salvo em arquivo.
+
+No Linux, use a versão Bash, também sem Node.js:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/Leandro-Santana013/lineboard/main/scripts/create-activation.sh \
+  -o /tmp/lineboard-create-activation.sh
+bash /tmp/lineboard-create-activation.sh
+```
+
+```bash
+SUPABASE_URL="https://<projeto>.supabase.co" \
+SUPABASE_PUBLISHABLE_KEY="<chave-publica>" \
+ADMIN_ACCESS_TOKEN="<JWT-do-administrador>" \
+ORGANIZATION_ID="<id-da-loja>" \
+node scripts/create-activation.mjs "Computador do caixa" 1 24
+```
+
+No instalador novo, abra **Configurações**, informe o código e reinicie o
+Lineboard. A aplicação grava a configuração no Windows, cria a credencial da
+instalação e importa automaticamente os dados da loja; não é necessário rodar
+`configure-cloud.ps1` nessa máquina.
 
 As funções têm `verify_jwt=false` intencionalmente: `invite-member` valida o JWT
 com `auth.getUser()` e depois a permissão no banco; `commerce` valida uma

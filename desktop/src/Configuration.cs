@@ -11,19 +11,29 @@ namespace Lineboard {
   // config file is the preferred distribution mechanism because an installed
   // desktop should not require a PowerShell session or a user profile setup.
   public static string Get(string name) {
+   EnsureLoaded();
+   object configured;
+   if(fileValues!=null&&fileValues.TryGetValue(name,out configured)&&configured!=null) {
+    var fromFile=Convert.ToString(configured);
+    if(!String.IsNullOrWhiteSpace(fromFile))return fromFile.Trim();
+   }
    var value=Environment.GetEnvironmentVariable(name);
    if(!String.IsNullOrWhiteSpace(value))return value;
    value=Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.User);
    if(!String.IsNullOrWhiteSpace(value))return value;
    value=Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.Machine);
    if(!String.IsNullOrWhiteSpace(value))return value;
-   EnsureLoaded();
-   object configured;
-   if(fileValues!=null&&fileValues.TryGetValue(name,out configured)&&configured!=null) {
-    value=Convert.ToString(configured);
-    if(!String.IsNullOrWhiteSpace(value))return value.Trim();
-   }
    return null;
+  }
+
+  public static void Merge(IDictionary<string,object> updates) {
+   if(updates==null)throw new ArgumentNullException("updates");
+   EnsureLoaded();
+   foreach(var entry in updates)if(entry.Value!=null)fileValues[entry.Key]=entry.Value;
+   var path=CommonPath();var parent=Path.GetDirectoryName(path);
+   if(!String.IsNullOrWhiteSpace(parent))Directory.CreateDirectory(parent);
+   File.WriteAllText(path,Json.Write(fileValues),new System.Text.UTF8Encoding(false));
+   lock(gate)fileValues=null;
   }
 
   static void EnsureLoaded() {
@@ -52,6 +62,11 @@ namespace Lineboard {
    if(!String.IsNullOrWhiteSpace(common))yield return Path.Combine(common,"Lineboard","config.json");
    var local=Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
    if(!String.IsNullOrWhiteSpace(local))yield return Path.Combine(local,"Lineboard","config.json");
+  }
+
+  static string CommonPath() {
+   var common=Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+   return Path.Combine(String.IsNullOrWhiteSpace(common)?AppDomain.CurrentDomain.BaseDirectory:common,"Lineboard","config.json");
   }
  }
 }
