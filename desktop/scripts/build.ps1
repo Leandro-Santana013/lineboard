@@ -58,6 +58,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Native compilation failed. The installed bundl
 Copy-Item -LiteralPath (Join-Path $desktopRoot 'schema.sql') -Destination (Join-Path $bundle 'schema.sql') -Force
 
 # A separate process releases assembly file handles before installation.
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'test-discounts.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Discount verification failed. The installed bundle was not changed.' }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'test-photo-upload.ps1') -AssemblyPath $executable
 if ($LASTEXITCODE -ne 0) { throw 'Product photo bridge verification failed. The installed bundle was not changed.' }
 if ($PrepareOnly) { Write-Output $executable; return }

@@ -90,18 +90,24 @@ namespace Lineboard {
    NonQuery(c,tx,"INSERT lineboard.Outbox(event_id,kind,payload) VALUES(@id,@kind,@payload)","@id",Guid.NewGuid(),"@kind",kind,"@payload",Json.Write(payload));
   }
   public Dictionary<string,object> Health(){using(var c=Open())return new Dictionary<string,object>{{"mode",production?"production":"sandbox"},{"server",Server},{"database",Database},{"instance_id",InstanceId},{"pending",Scalar(c,null,"SELECT COUNT(*) FROM lineboard.Outbox WHERE state='pending'")},{"fiscal_issuance","unavailable"},{"production_writes",production},{"sicnet_write_mode",production?"atomic":"sandbox"}};}
-  const string CatalogSql=@"SELECT u.id AS stock_item_id,u.product_id,u.variant_id,u.sic_id,u.barcode,u.qr_only,u.category,u.color,u.size,u.location,u.photo AS photo_path,u.revision,u.expected_quantity,
+  const string CatalogSql=@"SELECT u.id AS stock_item_id,u.product_id,u.variant_id,u.sic_id,u.barcode,u.qr_only,u.category,u.color,u.size,u.location,u.photo AS photo_path,u.photos AS photo_paths,u.revision,u.expected_quantity,
    p.produto AS name,p.fabricante AS brand,p.precocusto AS cost,p.precovenda AS price,p.quantidade AS quantity,p.obs AS notes,p.codinterno AS internal_code,
    p.codipi,p.cst,p.ipi,p.icms,p.basecalculo,p.pesobruto,p.pesoliq,p.ipi_cst,p.ipi_basecalc,p.cean,p.ceantrib,p.cprodanp,p.cest,p.origem,p.cst_pis,p.cst_cofins,p.cbenef,p.fcp,p.cst_ibscbs,p.cclasstrib
    FROM lineboard.Units u JOIN dbo.TABEST1 p ON p.controle=u.sic_id";
-  Dictionary<string,object> Enrich(Dictionary<string,object> row){row["organization_id"]=InstanceId;row["tracking"]="individual";row["category"]=Convert.ToString(row["category"]??"");row["model"]="";row["conflict"]=Convert.ToDecimal(row["quantity"]??0)!=Convert.ToDecimal(row["expected_quantity"]);return row;}
+  static List<string> PhotoList(Dictionary<string,object> row){
+   var result=new List<string>();object raw;
+   if(row!=null&&row.TryGetValue("photo_paths",out raw)&&raw!=null){try{result=raw is string?Json.Read<List<string>>(Convert.ToString(raw)):Json.Read<List<string>>(Json.Write(raw));}catch{result=new List<string>();}}
+   var legacy=Convert.ToString(row!=null&&row.ContainsKey("photo_path")?row["photo_path"]:null);
+   if(result==null)result=new List<string>();if(result.Count==0&&!String.IsNullOrWhiteSpace(legacy))result.Add(legacy);return result.Where(x=>!String.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).Take(6).ToList();
+  }
+  Dictionary<string,object> Enrich(Dictionary<string,object> row){var photos=PhotoList(row);row["photo_paths"]=photos;row["photo_path"]=photos.FirstOrDefault()??"";row["organization_id"]=InstanceId;row["tracking"]="individual";row["category"]=Convert.ToString(row["category"]??"");row["model"]="";row["conflict"]=Convert.ToDecimal(row["quantity"]??0)!=Convert.ToDecimal(row["expected_quantity"]);return row;}
   public List<Dictionary<string,object>> Catalog(){using(var c=Open())return Rows(c,null,CatalogSql+" ORDER BY u.barcode").Select(Enrich).ToList();}
   Dictionary<string,object> Unit(SqlConnection c,SqlTransaction tx,string barcode){
    var row=Rows(c,tx,CatalogSql+" WHERE u.barcode=@barcode","@barcode",barcode).SingleOrDefault();if(row==null)throw new DomainError("BARCODE_NOT_FOUND");return Enrich(row);
   }
   public Dictionary<string,object> Lookup(string barcode){using(var c=Open())return Unit(c,null,Validation.Barcode(barcode));}
   static UnitFields FieldsFrom(Dictionary<string,object> row){
-   var f=new UnitFields{name=(string)row["name"],brand=(string)row["brand"],category=Convert.ToString(row["category"]),color=(string)row["color"],size=(string)row["size"],location=(string)row["location"],photo=(string)row["photo_path"],notes=Convert.ToString(row["notes"]),internal_code=Convert.ToString(row["internal_code"]),cost=Convert.ToDecimal(row["cost"]??0),price=Convert.ToDecimal(row["price"]??0),fiscal=new Dictionary<string,object>()};
+   var f=new UnitFields{name=(string)row["name"],brand=(string)row["brand"],category=Convert.ToString(row["category"]),color=(string)row["color"],size=(string)row["size"],location=(string)row["location"],photo=(string)row["photo_path"],photos=PhotoList(row),notes=Convert.ToString(row["notes"]),internal_code=Convert.ToString(row["internal_code"]),cost=Convert.ToDecimal(row["cost"]??0),price=Convert.ToDecimal(row["price"]??0),fiscal=new Dictionary<string,object>()};
    foreach(var name in Fiscal.TextFields.Keys.Concat(Fiscal.Numbers))if(row.ContainsKey(name)&&row[name]!=null)f.fiscal[name]=row[name];return f;
   }
   static void WriteFields(SqlConnection c,SqlTransaction tx,int sicId,UnitFields f){
@@ -124,7 +130,7 @@ namespace Lineboard {
      int sicId=Convert.ToInt32(Scalar(c,tx,@"INSERT dbo.TABEST1(codigo,codinterno,produto,fabricante,precocusto,customedio,precovenda,quantidade,estminimo,unidade,lucro,comissao,moeda,obs,inativo,naosaitabela,datainc,qntembalagem)
        OUTPUT inserted.controle VALUES(@code,@internal,@name,@brand,@cost,@cost,@price,1,0,'UN',0,0,'R$',@notes,0,0,GETDATE(),1)","@code",code,"@internal",draft.internal_code,"@name",draft.name,"@brand",draft.brand,"@cost",draft.cost,"@price",draft.price,"@notes",draft.notes));
      WriteFields(c,tx,sicId,draft);var unitId=Guid.NewGuid();
-     NonQuery(c,tx,"INSERT lineboard.Units(id,product_id,variant_id,sic_id,barcode,qr_only,category,color,size,location,photo,expected_quantity) VALUES(@id,@product,@variant,@sic,@code,@qr_only,@category,@color,@size,@location,@photo,1)","@id",unitId,"@product",product,"@variant",variantId,"@sic",sicId,"@code",code,"@qr_only",draft.qr_only,"@category",draft.category,"@color",variant.color,"@size",variant.size,"@location",draft.location,"@photo",draft.photo);
+     NonQuery(c,tx,"INSERT lineboard.Units(id,product_id,variant_id,sic_id,barcode,qr_only,category,color,size,location,photo,photos,expected_quantity) VALUES(@id,@product,@variant,@sic,@code,@qr_only,@category,@color,@size,@location,@photo,@photos,1)","@id",unitId,"@product",product,"@variant",variantId,"@sic",sicId,"@code",code,"@qr_only",draft.qr_only,"@category",draft.category,"@color",variant.color,"@size",variant.size,"@location",draft.location,"@photo",draft.photo,"@photos",Json.Write(draft.photos));
      NonQuery(c,tx,"INSERT dbo.TABEST2B(lkest2a,lkproduto,quantidade,total,icms,valoripi,datainc,saiu) VALUES(@receipt,@sic,1,@cost,0,0,CONVERT(date,GETDATE()),0)","@receipt",receipt,"@sic",sicId,"@cost",draft.cost);
      NonQuery(c,tx,"INSERT lineboard.Movements(operation_id,unit_id,delta,reason,sic_document_id) VALUES(@operation,@unit,1,'initial',@receipt)","@operation",operation,"@unit",unitId,"@receipt",receipt);
      var item=Unit(c,tx,code);created.Add(item);Event(c,tx,"unit.upsert",item);
@@ -143,7 +149,7 @@ namespace Lineboard {
    foreach(var fixture in fixtures){
     var item=Catalog().SingleOrDefault(x=>String.Equals(Convert.ToString(x["internal_code"]),fixture.code,StringComparison.OrdinalIgnoreCase));
     if(item==null){
-     CreateProduct(new ProductDraft{request_id=fixture.request_id,name=fixture.name,brand="Lineboard",category="Teste QR",internal_code=fixture.code,location="Laboratorio QR",notes="Produto ficticio para teste local de QR Code",cost=10m,price=25m,qr_only=true,variants=new List<VariantDraft>{new VariantDraft{color=fixture.color,size=fixture.size,quantity=1}}});
+     CreateProduct(new ProductDraft{request_id=fixture.request_id,name=fixture.name,brand="Lines",category="Teste QR",internal_code=fixture.code,location="Laboratorio QR",notes="Produto ficticio para teste local de QR Code",cost=10m,price=25m,qr_only=true,variants=new List<VariantDraft>{new VariantDraft{color=fixture.color,size=fixture.size,quantity=1}}});
      item=Catalog().SingleOrDefault(x=>String.Equals(Convert.ToString(x["internal_code"]),fixture.code,StringComparison.OrdinalIgnoreCase));
     }
     if(item==null||!String.Equals(Convert.ToString(item["name"]),fixture.name,StringComparison.Ordinal))throw new DomainError("TEST_FIXTURE_COLLISION");
@@ -160,13 +166,13 @@ namespace Lineboard {
     var before=Unit(c,tx,barcode);CheckQuantity(before);if(IsQrTestFixture(before)&&!IsQrTestInternalCode(draft.internal_code))throw new DomainError("QR_TEST_CODE_RESERVED");if(Convert.ToInt64(before["revision"])!=draft.revision)throw new DomainError("REVISION_CONFLICT");
     WriteFields(c,tx,Convert.ToInt32(before["sic_id"]),draft);
     var variant=Scalar(c,tx,"SELECT TOP(1) variant_id FROM lineboard.Units WHERE product_id=@product AND color=@color AND size=@size","@product",Validation.Id((string)before["product_id"]),"@color",draft.color,"@size",draft.size)??(object)Guid.NewGuid();
-    NonQuery(c,tx,"UPDATE lineboard.Units SET variant_id=@variant,category=@category,color=@color,size=@size,location=@location,photo=@photo,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE barcode=@code","@variant",variant,"@category",draft.category,"@color",draft.color,"@size",draft.size,"@location",draft.location,"@photo",draft.photo,"@code",barcode);
+    NonQuery(c,tx,"UPDATE lineboard.Units SET variant_id=@variant,category=@category,color=@color,size=@size,location=@location,photo=@photo,photos=@photos,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE barcode=@code","@variant",variant,"@category",draft.category,"@color",draft.color,"@size",draft.size,"@location",draft.location,"@photo",draft.photo,"@photos",Json.Write(draft.photos),"@code",barcode);
     var after=Unit(c,tx,barcode);NonQuery(c,tx,"INSERT lineboard.UnitEdits(operation_id,unit_id,before_json,after_json) VALUES(@operation,@unit,@before,@after)","@operation",operation,"@unit",Validation.Id((string)before["stock_item_id"]),"@before",Json.Write(before),"@after",Json.Write(after));
-    if(!String.Equals(Convert.ToString(before["photo_path"]),draft.photo,StringComparison.Ordinal)){
+    if(!PhotoList(before).SequenceEqual(draft.photos,StringComparer.Ordinal)){
      var siblings=Rows(c,tx,"SELECT barcode FROM lineboard.Units WHERE product_id=@product AND barcode<>@code ORDER BY barcode","@product",Validation.Id((string)before["product_id"]),"@code",barcode);
      foreach(var sibling in siblings){
       var code=Convert.ToString(sibling["barcode"]);var siblingBefore=Unit(c,tx,code);
-      NonQuery(c,tx,"UPDATE lineboard.Units SET photo=@photo,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE barcode=@code","@photo",draft.photo,"@code",code);
+      NonQuery(c,tx,"UPDATE lineboard.Units SET photo=@photo,photos=@photos,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE barcode=@code","@photo",draft.photo,"@photos",Json.Write(draft.photos),"@code",code);
       var siblingAfter=Unit(c,tx,code);NonQuery(c,tx,"INSERT lineboard.UnitEdits(operation_id,unit_id,before_json,after_json) VALUES(@operation,@unit,@before,@after)","@operation",operation,"@unit",Validation.Id((string)siblingBefore["stock_item_id"]),"@before",Json.Write(siblingBefore),"@after",Json.Write(siblingAfter));
       Event(c,tx,"unit.upsert",siblingAfter);
      }
@@ -206,22 +212,24 @@ namespace Lineboard {
     if(Convert.ToInt64(Scalar(c,tx,"SELECT cart_version FROM lineboard.Settings WHERE id=1"))!=draft.version)throw new DomainError("CART_CHANGED");
     var items=Rows(c,tx,CatalogSql+" JOIN lineboard.Cart cart ON cart.unit_id=u.id ORDER BY u.barcode").Select(Enrich).ToList();if(items.Count==0)throw new DomainError("EMPTY_CART");EnsureSingleFixtureGroup(items);
     foreach(var item in items){CheckQuantity(item);if(Convert.ToDecimal(item["quantity"])!=1)throw new DomainError("INSUFFICIENT_STOCK");}
-    var total=items.Sum(x=>Convert.ToDecimal(x["price"]??0));if(total<=0)throw new DomainError("PRICE_REQUIRED");
+    var discount=SaleDiscount.Calculate(items,draft.discount_type,draft.discount_value);var total=discount.Total;
     object paymentId=Scalar(c,tx,"SELECT controle FROM dbo.TABEST7 WHERE recebimento=@name","@name",paymentNames[draft.payment]);
     object typeId=Scalar(c,tx,"SELECT controle FROM dbo.TABEST6 WHERE tipo=@name","@name",draft.payment=="pix"||draft.payment=="cash"?"Venda a vista":"Venda com cartão");
     if(paymentId==null||typeId==null)throw new DomainError("SIC_LOOKUP_MISSING");
     if(ClaimCheckout!=null)ClaimCheckout(draft.request_id,items);
     int saleId=Convert.ToInt32(Scalar(c,tx,@"INSERT dbo.TABEST3A(data,hora,lktipo,nota,pedido,lkreceb,obs,venda,cancelada,valorfrete,cgi,tagcliente,comissao,comissaovend)
-     OUTPUT inserted.controle VALUES(CONVERT(date,GETDATE()),CONVERT(time,GETDATE()),@type,0,0,@payment,@note,1,0,0,0,0,0,0)","@type",typeId,"@payment",paymentId,"@note","Lineboard "+operation));
+     OUTPUT inserted.controle VALUES(CONVERT(date,GETDATE()),CONVERT(time,GETDATE()),@type,0,0,@payment,@note,1,0,0,0,0,0,0)","@type",typeId,"@payment",paymentId,"@note","Lineboard "+operation+discount.Note));
     var id=Guid.NewGuid();
     foreach(var item in items){
+     var lineTotal=discount.LineTotals[(string)item["barcode"]];
      int changed=NonQuery(c,tx,"UPDATE dbo.TABEST1 SET quantidade=quantidade-1 WHERE controle=@id AND quantidade=1","@id",item["sic_id"]);if(changed!=1)throw new DomainError("INSUFFICIENT_STOCK");
-     NonQuery(c,tx,"INSERT dbo.TABEST3B(lkest3a,quantidade,lkproduto,total,totvenda,lucro,acrescimo,datainc,icms,quantcanc,valorcanc,comissaoprod) VALUES(@sale,1,@sic,@price,@price,@profit,0,GETDATE(),0,0,0,0)","@sale",saleId,"@sic",item["sic_id"],"@price",item["price"],"@profit",Convert.ToDecimal(item["price"])-Convert.ToDecimal(item["cost"]));
+     NonQuery(c,tx,"INSERT dbo.TABEST3B(lkest3a,quantidade,lkproduto,total,totvenda,lucro,acrescimo,datainc,icms,quantcanc,valorcanc,comissaoprod) VALUES(@sale,1,@sic,@price,@price,@profit,0,GETDATE(),0,0,0,0)","@sale",saleId,"@sic",item["sic_id"],"@price",lineTotal,"@profit",lineTotal-Convert.ToDecimal(item["cost"]));
      NonQuery(c,tx,"UPDATE lineboard.Units SET expected_quantity=0,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE id=@unit; INSERT lineboard.Movements(operation_id,unit_id,delta,reason,sic_document_id) VALUES(@op,@unit,-1,'sale',@sale)","@unit",Validation.Id((string)item["stock_item_id"]),"@op",operation,"@sale",saleId);
     }
     NonQuery(c,tx,"INSERT dbo.TABEST3R(lkest3a,lkest7,valor,pgtroco) VALUES(@sale,@payment,@total,0)","@sale",saleId,"@payment",paymentId,"@total",total);
     NonQuery(c,tx,"INSERT lineboard.Sales(id,operation_id,sic_id,payment,total,fiscal_status) VALUES(@id,@op,@sale,@payment,@total,@fiscal_status); DELETE FROM lineboard.Cart; UPDATE lineboard.Settings SET cart_version=cart_version+1 WHERE id=1;","@id",id,"@op",operation,"@sale",saleId,"@payment",draft.payment,"@total",total,"@fiscal_status",fiscalStatus);
     var result=new Dictionary<string,object>{{"sale_id",id.ToString()},{"sic_sale_id",saleId},{"total",total},{"items",items},{"fiscal_document",fiscalDocument},{"fiscal_status",fiscalStatus},{"payment_recorded",true},{"payment_processed",false},{"native_sic_validation","pending"}};
+    discount.Include(result);
     if(ClaimCheckout!=null)result["checkout_request_id"]=draft.request_id;
     Event(c,tx,"sale.confirmed",result);return result;
    });
@@ -265,6 +273,34 @@ namespace Lineboard {
     var result=new Dictionary<string,object>{{"sale_id",id.ToString()},{"sic_sale_id",saleId},{"total",total},{"items",items},{"fiscal_document",fiscalDocument},{"fiscal_status",fiscalStatus},{"payment_recorded",true},{"payment_processed",false},{"native_sic_validation","pending"}};
     if(ClaimCheckout!=null)result["checkout_request_id"]=draft.request_id;
     Event(c,tx,"sale.confirmed",result);return result;
+   });
+  }
+  public Dictionary<string,object> RevertSale(RevertSaleDraft draft){
+   var saleId=Validation.Id(draft.sale_id);
+   return Execute("sale.revert",draft.request_id,draft,(c,tx,operation)=>{
+    var sale=Rows(c,tx,"SELECT s.id,s.sic_id,s.total,s.reversed_at,h.cancelada FROM lineboard.Sales s JOIN dbo.TABEST3A h ON h.controle=s.sic_id WHERE s.id=@id","@id",saleId).SingleOrDefault();
+    if(sale==null)throw new DomainError("SALE_NOT_FOUND");
+    if(sale["reversed_at"]!=null||Convert.ToInt32(sale["cancelada"]??0)!=0)throw new DomainError("SALE_ALREADY_REVERTED");
+    var lines=Rows(c,tx,@"SELECT l.lkproduto,l.quantidade,l.total,u.id AS unit_id,u.barcode,u.expected_quantity,p.quantidade AS current_quantity
+      FROM dbo.TABEST3B l JOIN dbo.TABEST1 p ON p.controle=l.lkproduto LEFT JOIN lineboard.Units u ON u.sic_id=l.lkproduto
+      WHERE l.lkest3a=@sale ORDER BY l.lkproduto","@sale",sale["sic_id"]);
+    if(lines.Count==0)throw new DomainError("SALE_NOT_FOUND");
+    var items=new List<Dictionary<string,object>>();
+    foreach(var line in lines){
+     if(line["unit_id"]==null||Convert.ToInt32(line["quantidade"]??0)<1)throw new DomainError("SALE_REVERSAL_UNSUPPORTED");
+     if(Convert.ToInt32(line["current_quantity"]??0)!=0||Convert.ToInt32(line["expected_quantity"]??0)!=0)throw new DomainError("REVERSAL_STOCK_CONFLICT");
+     var quantity=Convert.ToInt32(line["quantidade"]);var sicProduct=line["lkproduto"];
+     if(NonQuery(c,tx,"UPDATE dbo.TABEST1 SET quantidade=quantidade+@quantity WHERE controle=@sic AND quantidade=0","@quantity",quantity,"@sic",sicProduct)!=1)throw new DomainError("REVERSAL_STOCK_CONFLICT");
+     var unitId=Validation.Id(Convert.ToString(line["unit_id"]));
+     NonQuery(c,tx,"UPDATE lineboard.Units SET expected_quantity=1,revision=revision+1,updated_at=SYSUTCDATETIME() WHERE id=@unit","@unit",unitId);
+     NonQuery(c,tx,"INSERT lineboard.Movements(operation_id,unit_id,delta,reason,sic_document_id) VALUES(@op,@unit,@delta,'sale_reversal',@sale)","@op",operation,"@unit",unitId,"@delta",quantity,"@sale",sale["sic_id"]);
+     NonQuery(c,tx,"UPDATE dbo.TABEST3B SET quantcanc=quantidade,valorcanc=total WHERE lkest3a=@sale AND lkproduto=@sic","@sale",sale["sic_id"],"@sic",sicProduct);
+     items.Add(Unit(c,tx,Convert.ToString(line["barcode"])));
+    }
+    if(NonQuery(c,tx,"UPDATE dbo.TABEST3A SET cancelada=1 WHERE controle=@sale AND cancelada=0","@sale",sale["sic_id"])!=1)throw new DomainError("SALE_ALREADY_REVERTED");
+    NonQuery(c,tx,"UPDATE lineboard.Sales SET fiscal_status='cancelled',reversed_at=SYSUTCDATETIME(),reversal_operation_id=@op WHERE id=@id AND reversed_at IS NULL","@op",operation,"@id",saleId);
+    var result=new Dictionary<string,object>{{"sale_id",saleId.ToString()},{"sic_sale_id",Convert.ToInt32(sale["sic_id"])},{"total",Convert.ToDecimal(sale["total"])},{"items",items},{"reversed",true},{"payment_reversed",false}};
+    Event(c,tx,"sale.reversed",result);return result;
    });
   }
   public Dictionary<string,object> Adjust(AdjustmentDraft draft){
@@ -332,7 +368,7 @@ namespace Lineboard {
     var pending=PendingBarcodes(c,tx);
     foreach(var remote in units){
      var barcode=Validation.Barcode(CloudText(remote,"barcode"));var unitId=Validation.Id(CloudText(remote,"stock_item_id"));var productId=Validation.Id(CloudText(remote,"product_id"));var variantId=Validation.Id(CloudText(remote,"variant_id"));
-     var fields=new UnitFields{name=CloudText(remote,"name"),brand=CloudText(remote,"brand"),category=CloudText(remote,"category"),color=CloudText(remote,"color"),size=CloudText(remote,"size"),cost=CloudDecimal(remote,"cost"),price=CloudDecimal(remote,"price"),location=CloudText(remote,"location"),photo=CloudText(remote,"photo_path"),notes=CloudText(remote,"notes"),internal_code=CloudText(remote,"internal_code"),fiscal=new Dictionary<string,object>()};
+     var fields=new UnitFields{name=CloudText(remote,"name"),brand=CloudText(remote,"brand"),category=CloudText(remote,"category"),color=CloudText(remote,"color"),size=CloudText(remote,"size"),cost=CloudDecimal(remote,"cost"),price=CloudDecimal(remote,"price"),location=CloudText(remote,"location"),photo=CloudText(remote,"photo_path"),photos=PhotoList(remote),notes=CloudText(remote,"notes"),internal_code=CloudText(remote,"internal_code"),fiscal=new Dictionary<string,object>()};
      foreach(var name in Fiscal.TextFields.Keys.Concat(Fiscal.Numbers)){object value;if(remote.TryGetValue(name,out value)&&value!=null)fields.fiscal[name]=value;}
      Validation.Fields(fields);var quantity=CloudInt(remote,"quantity");var revision=CloudLong(remote,"revision");if((quantity!=0&&quantity!=1)||revision<1)throw new DomainError("INVALID_CLOUD_SNAPSHOT");
      var qrOnly=remote.ContainsKey("qr_only")&&remote["qr_only"]!=null&&Convert.ToBoolean(remote["qr_only"]);
@@ -349,7 +385,7 @@ namespace Lineboard {
        NonQuery(c,tx,"UPDATE dbo.TABEST1 SET quantidade=@quantity WHERE controle=@sic; INSERT dbo.TABINV(data,lkproduto,quantidade,acerto) VALUES(CONVERT(date,GETDATE()),@sic,@quantity,1)","@quantity",quantity,"@sic",existingSicId);
        NonQuery(c,tx,"INSERT lineboard.Movements(operation_id,unit_id,delta,reason) VALUES(@operation,@unit,@delta,'cloud_sync')","@operation",Guid.NewGuid(),"@unit",unitId,"@delta",quantity-currentQuantity);
       }
-      NonQuery(c,tx,"UPDATE lineboard.Units SET variant_id=@variant,qr_only=@qr_only,category=@category,color=@color,size=@size,location=@location,photo=@photo,expected_quantity=@quantity,revision=@revision,updated_at=SYSUTCDATETIME() WHERE id=@id","@variant",variantId,"@qr_only",qrOnly,"@category",fields.category,"@color",fields.color,"@size",fields.size,"@location",fields.location,"@photo",fields.photo,"@quantity",quantity,"@revision",revision,"@id",unitId);
+      NonQuery(c,tx,"UPDATE lineboard.Units SET variant_id=@variant,qr_only=@qr_only,category=@category,color=@color,size=@size,location=@location,photo=@photo,photos=@photos,expected_quantity=@quantity,revision=@revision,updated_at=SYSUTCDATETIME() WHERE id=@id","@variant",variantId,"@qr_only",qrOnly,"@category",fields.category,"@color",fields.color,"@size",fields.size,"@location",fields.location,"@photo",fields.photo,"@photos",Json.Write(fields.photos),"@quantity",quantity,"@revision",revision,"@id",unitId);
       updated++;continue;
      }
      if(Convert.ToInt32(Scalar(c,tx,"SELECT COUNT(*) FROM dbo.TABEST1 WHERE codigo=@barcode","@barcode",barcode))!=0)throw new DomainError("CLOUD_LOCAL_CONFLICT");
@@ -357,7 +393,7 @@ namespace Lineboard {
      int sicId=Convert.ToInt32(Scalar(c,tx, @"INSERT dbo.TABEST1(codigo,codinterno,produto,fabricante,precocusto,customedio,precovenda,quantidade,estminimo,unidade,lucro,comissao,moeda,obs,inativo,naosaitabela,datainc,qntembalagem)
        OUTPUT inserted.controle VALUES(@code,@internal,@name,@brand,@cost,@cost,@price,@quantity,0,'UN',0,0,'R$',@notes,0,0,GETDATE(),1)","@code",barcode,"@internal",fields.internal_code,"@name",fields.name,"@brand",fields.brand,"@cost",fields.cost,"@price",fields.price,"@quantity",quantity,"@notes",fields.notes));
      WriteFields(c,tx,sicId,fields);
-     NonQuery(c,tx,"INSERT lineboard.Units(id,product_id,variant_id,sic_id,barcode,qr_only,category,color,size,location,photo,expected_quantity,revision) VALUES(@id,@product,@variant,@sic,@code,@qr_only,@category,@color,@size,@location,@photo,@quantity,@revision)","@id",unitId,"@product",productId,"@variant",variantId,"@sic",sicId,"@code",barcode,"@qr_only",qrOnly,"@category",fields.category,"@color",fields.color,"@size",fields.size,"@location",fields.location,"@photo",fields.photo,"@quantity",quantity,"@revision",revision);
+     NonQuery(c,tx,"INSERT lineboard.Units(id,product_id,variant_id,sic_id,barcode,qr_only,category,color,size,location,photo,photos,expected_quantity,revision) VALUES(@id,@product,@variant,@sic,@code,@qr_only,@category,@color,@size,@location,@photo,@photos,@quantity,@revision)","@id",unitId,"@product",productId,"@variant",variantId,"@sic",sicId,"@code",barcode,"@qr_only",qrOnly,"@category",fields.category,"@color",fields.color,"@size",fields.size,"@location",fields.location,"@photo",fields.photo,"@photos",Json.Write(fields.photos),"@quantity",quantity,"@revision",revision);
      NonQuery(c,tx,"INSERT dbo.TABEST2B(lkest2a,lkproduto,quantidade,total,icms,valoripi,datainc,saiu) VALUES(@receipt,@sic,1,@cost,0,0,CONVERT(date,GETDATE()),@saiu)","@receipt",receipt,"@sic",sicId,"@cost",fields.cost,"@saiu",quantity==0?1:0);
      if(quantity==1)NonQuery(c,tx,"INSERT lineboard.Movements(operation_id,unit_id,delta,reason,sic_document_id) VALUES(@operation,@unit,1,'initial',@receipt)","@operation",Guid.NewGuid(),"@unit",unitId,"@receipt",receipt);
      imported++;long numeric;if(Int64.TryParse(barcode.Substring(4),NumberStyles.None,CultureInfo.InvariantCulture,out numeric)&&numeric>maximumBarcode)maximumBarcode=numeric;
@@ -367,7 +403,7 @@ namespace Lineboard {
    }
    return new Dictionary<string,object>{{"state",imported==0&&updated==0?"up_to_date":"imported"},{"imported",imported},{"updated",updated},{"existing",existing},{"total",units.Count}};
   }
-  public List<Dictionary<string,object>> Sales(){using(var c=Open())return Rows(c,null,"SELECT TOP(100) id,sic_id,payment,total,fiscal_status,created_at FROM lineboard.Sales ORDER BY created_at DESC");}
+  public List<Dictionary<string,object>> Sales(){using(var c=Open())return Rows(c,null,"SELECT TOP(100) id,sic_id,payment,total,fiscal_status,reversed_at,created_at FROM lineboard.Sales ORDER BY created_at DESC");}
   static object ReportDate(string value){
    if(String.IsNullOrWhiteSpace(value))return null;
    DateTime date;if(!DateTime.TryParse(value,CultureInfo.InvariantCulture,DateTimeStyles.RoundtripKind,out date))throw new DomainError("INVALID_REPORT_PERIOD");
@@ -392,7 +428,7 @@ namespace Lineboard {
       LEFT JOIN lineboard.Units u ON u.sic_id=l.lkproduto
       WHERE (@from IS NULL OR s.created_at>=@from) AND (@to IS NULL OR s.created_at<@to)
         AND (@brand IS NULL OR p.fabricante=@brand) AND (@category IS NULL OR u.category=@category)
-        AND (@payment IS NULL OR s.payment=@payment)
+        AND (@payment IS NULL OR s.payment=@payment) AND s.reversed_at IS NULL
         AND (@query IS NULL OR p.produto LIKE @query OR p.codinterno LIKE @query OR u.barcode LIKE @query)
       ORDER BY s.created_at DESC","@from",from,"@to",to,"@brand",brand,"@category",category,"@payment",payment,"@query",query);
     var sales=rows.GroupBy(x=>Convert.ToString(x["sale_id"])).Select(g=>g.First()).ToList();

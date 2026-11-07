@@ -12,7 +12,7 @@ jobs:
       - run: npm run test:postgres
       - uses: denoland/setup-deno@v2
         with: { deno-version: v2.x }
-      - run: deno check --config supabase/functions/deno.json supabase/functions/commerce/index.ts supabase/functions/invite-member/index.ts
+      - run: deno check --config supabase/functions/deno.json supabase/functions/commerce/index.ts supabase/functions/invite-member/index.ts supabase/functions/sic-sync/index.ts supabase/functions/product-photos/index.ts
       - run: deno test --config supabase/functions/deno.json supabase/functions/_shared/environment_test.ts
   flutter:
     runs-on: ubuntu-latest

@@ -21,7 +21,7 @@ namespace Lineboard {
   readonly System.Windows.Forms.Timer refreshTimer=new System.Windows.Forms.Timer {Interval=1800};
   long cartVersion=-1; string pendingConfirmation; ConfirmDraft pendingDraft; string inventorySignature="";bool renderingPreview;
   public DesktopForm(SicStore store,LocalApi api,RealtimeBridge realtime=null){
-   this.store=store;this.api=api;this.realtime=realtime;sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);if(this.realtime!=null)this.realtime.SharedCartChanged+=backgroundSync.Request;DesktopTheme.Form(this);Text="Lineboard • Loja e estoque • Laboratório";
+   this.store=store;this.api=api;this.realtime=realtime;sync=new CloudSync(store);backgroundSync=new BackgroundSync(store,sync);if(this.realtime!=null)this.realtime.SharedCartChanged+=backgroundSync.Request;DesktopTheme.Form(this);Text="Linesboard • Loja e estoque";
    Size=new Size(1360,880);MinimumSize=new Size(1180,740);StartPosition=FormStartPosition.CenterScreen;KeyPreview=true;DoubleBuffered=true;
    var area=Screen.FromControl(this).WorkingArea;Size=new Size(Math.Min(Width,area.Width),Math.Min(Height,area.Height));
    var shell=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,Margin=Padding.Empty};shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,204));shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));shell.RowStyles.Add(new RowStyle(SizeType.Percent,100));Controls.Add(shell);
@@ -49,7 +49,7 @@ namespace Lineboard {
    sidebar.Controls.Add(Nav("Histórico",()=>ShowRows("Histórico de estoque",store.History()),"history"),0,3);
    sidebar.Controls.Add(Nav("Etiquetas",()=>ExportLabels(),"tag"),0,4);
    sidebar.Controls.Add(Nav("Configurações",()=>ShowSettings(),"settings"),0,6);
-   sidebar.Controls.Add(DesktopTheme.Label("  ●  Modo laboratório",9,Color.FromArgb(255,195,87)),0,7);return sidebar;
+   sidebar.Controls.Add(DesktopTheme.Label("  ●  Modo de testes",9,Color.FromArgb(255,195,87)),0,7);return sidebar;
   }
   ActionButton Nav(string title,Action action,string glyph){var button=Button(title,action,false,glyph);button.Navigation=true;button.Dock=DockStyle.Fill;button.Font=DesktopTheme.TextFont(9.5f);button.Margin=new Padding(0,2,0,2);return button;}
   Control BuildInventory(){
@@ -75,7 +75,7 @@ namespace Lineboard {
    payment.Items.AddRange(new object[]{"Pix","Dinheiro","Cartão de crédito","Cartão de débito","Google Pay"});payment.SelectedIndex=0;payment.Font=DesktopTheme.TextFont(10);payment.Margin=new Padding(0,3,0,0);paymentRows.Controls.Add(payment,0,1);rows.Controls.Add(paymentRows,0,3);
    var summary=DesktopTheme.Rows(28,48);summary.Controls.Add(pieceCount,0,0);var totalRow=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,Margin=Padding.Empty};totalRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,76));totalRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));totalRow.RowStyles.Add(new RowStyle(SizeType.Percent,100));totalRow.Controls.Add(DesktopTheme.Label("Total",16,DesktopTheme.Ink,FontStyle.Bold),0,0);total.TextAlign=ContentAlignment.MiddleRight;totalRow.Controls.Add(total,1,0);summary.Controls.Add(totalRow,0,1);rows.Controls.Add(summary,0,4);
    confirmButton=Button("Confirmar venda de teste",()=>Confirm(),true);confirmButton.Dock=DockStyle.Fill;confirmButton.Font=DesktopTheme.TextFont(10,FontStyle.Bold);rows.Controls.Add(confirmButton,0,5);
-   var note=DesktopTheme.Label("Registra no laboratório, sem cobrança\nou emissão de nota.",8,DesktopTheme.Muted);note.TextAlign=ContentAlignment.MiddleCenter;rows.Controls.Add(note,0,6);return card;
+   var note=DesktopTheme.Label("Registra localmente, sem cobrança\nou emissão de nota.",8,DesktopTheme.Muted);note.TextAlign=ContentAlignment.MiddleCenter;rows.Controls.Add(note,0,6);return card;
   }
   static DataGridView Grid(){var grid=new DataGridView{Dock=DockStyle.Fill,ReadOnly=true,AllowUserToAddRows=false,AllowUserToDeleteRows=false,SelectionMode=DataGridViewSelectionMode.FullRowSelect,MultiSelect=false,Margin=Padding.Empty};DesktopTheme.Grid(grid);return grid;}
   ActionButton Button(string title,Action action,bool primary=false,string glyph=null){var b=new ActionButton{Text=title,Primary=primary,Glyph=glyph};b.Click+=(s,e)=>Run(action);return b;}
@@ -187,7 +187,7 @@ namespace Lineboard {
    if(pendingConfirmation==null){var current=store.Cart();if(MessageBox.Show(this,"Confirmar os itens e registrar o pagamento informado?\nTotal: "+Convert.ToDecimal(current["total"]).ToString("C",CultureInfo.GetCultureInfo("pt-BR"))+"\n\nTeste na cópia do SIC. Nenhuma cobrança ou nota será emitida.","Conferir venda",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
     pendingConfirmation=Guid.NewGuid().ToString();pendingDraft=new ConfirmDraft{request_id=pendingConfirmation,version=Convert.ToInt64(current["version"]),payment=new[]{"pix","cash","credit","debit","google_pay"}[payment.SelectedIndex]};
    }
-   try{var result=store.Confirm(pendingDraft);pendingConfirmation=null;pendingDraft=null;MessageBox.Show(this,"Venda gravada no laboratório. Registro SIC: "+result["sic_sale_id"]+"\nEstoque baixado uma vez. Pagamento apenas registrado.\nEmissão fiscal não solicitada.","Venda registrada");}
+   try{var result=store.Confirm(pendingDraft);pendingConfirmation=null;pendingDraft=null;MessageBox.Show(this,"Venda gravada. Registro SIC: "+result["sic_sale_id"]+"\nEstoque baixado uma vez. Pagamento apenas registrado.\nEmissão fiscal não solicitada.","Venda registrada");}
    catch(DomainError){pendingConfirmation=null;pendingDraft=null;throw;}
   }
   void ShowRows(string title,List<Dictionary<string,object>> rows){

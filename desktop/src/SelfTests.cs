@@ -33,6 +33,7 @@ namespace Lineboard {
    Check("Code128 includes quiet zones checksum and optimized numeric suffix",Labels.Modules("SLB-900000000001").Length==176&&Labels.Codewords("SLB-900000000001")[12]==1&&Labels.Modules(codes[0]).StartsWith("0000000000")&&Labels.Modules(codes[0]).EndsWith("0000000000"));
    var sampleLabel=new[]{new Dictionary<string,object>{{"barcode",codes[0]},{"name","<script>"},{"color","Preta"},{"size","M"}}};
    Check("label export escapes product text",Labels.HtmlWithQr(sampleLabel,50,30).Contains("&lt;script&gt;"));
+   Check("label Code128 fills the available width with a legible human code",Labels.HtmlWithQr(sampleLabel,50,30).Contains("width:calc(100% - 3mm);height:16.5mm")&&Labels.HtmlWithQr(sampleLabel,50,30).Contains("viewBox=\"0 0 176 64\"")&&Labels.HtmlWithQr(sampleLabel,50,30).Contains("class=\"barcode-code\">"+codes[0]+"</div>"));
    Check("QR SVG uses a quiet zone around its 21-module symbol",Labels.QrSvg(codes[0]).Contains("viewBox=\"0 0 29 29\"")&&Labels.QrModules(codes[0]).GetLength(0)==21);
    Check("legacy product labels keep Code128 only",Labels.HtmlWithQr(sampleLabel,50,30).Contains("class=\"barcode\"")&&!Labels.HtmlWithQr(sampleLabel,50,30).Contains("class=\"qr\""));
    var qrLabel=new[]{new Dictionary<string,object>{{"barcode",codes[0]},{"name","Produto QR"},{"color","Verde"},{"size","M"},{"qr_only",true}}};var qrHtml=Labels.HtmlWithQr(qrLabel,50,30);

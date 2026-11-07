@@ -44,7 +44,7 @@ class _ProductFormState extends State<ProductForm> {
       notes = TextEditingController();
   final variants = [VariantFields()];
   String tracking = 'quantity';
-  ProductPhoto? photo;
+  List<ProductPhotoSelection> photos = [];
   bool busy = false;
   String? error;
   Map<String, dynamic>? pending;
@@ -63,6 +63,15 @@ class _ProductFormState extends State<ProductForm> {
       price.text = _moneyText(saved['price']);
       notes.text = saved['notes'] ?? '';
       tracking = saved['tracking'];
+      final savedPhotos = saved['photo_paths'];
+      final paths = savedPhotos is List
+          ? savedPhotos.whereType<String>().where((path) => path.isNotEmpty).toSet()
+          : <String>{};
+      final legacyPhoto = saved['photo_path'];
+      if (paths.isEmpty && legacyPhoto is String && legacyPhoto.isNotEmpty) {
+        paths.add(legacyPhoto);
+      }
+      photos = paths.map(ProductPhotoSelection.remote).toList();
       variants.single.dispose();
       variants.clear();
       for (final value in saved['variants'] as List) {
@@ -119,10 +128,7 @@ class _ProductFormState extends State<ProductForm> {
             throw const FormatException('DUPLICATE_VARIANT');
           }
         }
-        String? path;
-        if (photo != null) {
-          path = await widget.repo.uploadPhoto(widget.org, photo!);
-        }
+        final photoPaths = await _uploadedPaths();
         final product = <String, dynamic>{
           'name': name.text.trim(),
           'category': category.text.trim(),
@@ -133,12 +139,14 @@ class _ProductFormState extends State<ProductForm> {
           'notes': notes.text.trim(),
           'tracking': tracking,
           'variants': variants.map((v) => v.toJson()).toList(),
-          'photo_path': path,
+          'photo_path': photoPaths.isEmpty ? null : photoPaths.first,
+          'photo_paths': photoPaths,
         };
         final key = const Uuid().v4();
         await widget.repo.savePendingProduct(widget.org, key, product);
         pending = {'key': key, 'product': product};
       }
+
       final created = await widget.repo.sendProduct(widget.org, pending!);
       final rawUnits = created['units'];
       final result = rawUnits is List
@@ -187,6 +195,22 @@ class _ProductFormState extends State<ProductForm> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<List<String>> _uploadedPaths() async {
+    final result = <String>[];
+    for (final selection in photos) {
+      if (selection.photo != null) {
+        selection.uploadedPath ??= await widget.repo.uploadPhoto(
+          widget.org,
+          selection.photo!,
+        );
+        result.add(selection.uploadedPath!);
+      } else if (selection.path != null) {
+        result.add(selection.path!);
+      }
+    }
+    return result;
   }
 
   @override
@@ -320,9 +344,9 @@ class _ProductFormState extends State<ProductForm> {
             const SizedBox(height: 20),
             field(notes, 'Observações', lines: 3, limit: 2000),
             ProductPhotoField(
-              photo: photo,
+              photos: photos,
               enabled: !busy,
-              onChanged: (value) => setState(() => photo = value),
+              onChanged: (value) => setState(() => photos = value),
             ),
             if (error != null)
               Padding(

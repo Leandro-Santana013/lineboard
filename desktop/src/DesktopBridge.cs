@@ -14,7 +14,7 @@ namespace Lineboard {
   public const string Origin = "https://lineboard.local/";
   static readonly HashSet<string> Actions = new HashSet<string>(StringComparer.Ordinal) {
    "bootstrap", "product.create", "photo.upload", "photo.url", "unit.get", "unit.edit", "stock.adjust",
-   "cart.add", "cart.remove", "cart.confirm", "sales.report", "history.list", "labels.preview",
+   "cart.add", "cart.remove", "cart.confirm", "sale.revert", "sales.report", "history.list", "labels.preview",
    "labels.export", "labels.fixtures", "settings.info", "activation.activate", "pair.open", "support.outbox"
   };
   readonly SicStore store;
@@ -93,9 +93,9 @@ namespace Lineboard {
     case "photo.upload":ExactKeys(payload,"content_type","data");return sync.UploadPhoto(RequiredString(payload,"content_type",40),RequiredString(payload,"data",7*1024*1024));
     case "photo.url":ExactKeys(payload,"photo_path");return sync.PhotoUrl(RequiredString(payload,"photo_path",1000));
     case "bootstrap":
-     ExactKeys(payload);var bootstrap=new {catalog=store.Catalog(),cart=store.Cart(),mode=store.Production?"production":"sandbox",sync_state=backgroundSync.State};BootstrapServed=true;return bootstrap;
+     ExactKeys(payload);if(!store.Production&&String.Equals(store.Database,"LINEBOARD_LAB",StringComparison.OrdinalIgnoreCase))EnsureQrTestFixtures();var bootstrap=new {catalog=store.Catalog(),cart=store.Cart(),mode=store.Production?"production":"sandbox",sync_state=backgroundSync.State};BootstrapServed=true;return bootstrap;
     case "product.create": {
-     var draft=Model<ProductDraft>(payload,"request_id","name","brand","category","color","size","cost","price","location","photo","notes","internal_code","fiscal","variants");
+     var draft=Model<ProductDraft>(payload,"request_id","name","brand","category","color","size","cost","price","location","photo","photos","notes","internal_code","fiscal","variants");
      ValidateVariantPayload(payload);ValidateVariants(draft.variants);var result=store.CreateProduct(draft);backgroundSync.Request();return result;
     }
     case "unit.get": {
@@ -104,7 +104,7 @@ namespace Lineboard {
     case "unit.edit": {
      ExactKeys(payload,"barcode","draft");RequiredKeys(payload,"barcode","draft");
      var draftPayload=NestedObject(payload,"draft");
-     var draft=Model<EditDraft>(draftPayload,"request_id","revision","name","brand","category","color","size","cost","price","location","photo","notes","internal_code","fiscal");
+     var draft=Model<EditDraft>(draftPayload,"request_id","revision","name","brand","category","color","size","cost","price","location","photo","photos","notes","internal_code","fiscal");
      var result=store.Edit(StringValue(payload,"barcode"),draft);backgroundSync.Request();return result;
     }
     case "stock.adjust": {
@@ -117,7 +117,10 @@ namespace Lineboard {
      var draft=Model<CartDraft>(payload,"request_id","barcode");var result=store.RemoveCart(draft);backgroundSync.Request();return result;
     }
     case "cart.confirm": {
-     var draft=Model<ConfirmDraft>(payload,"request_id","version","payment","fiscal_document");var result=store.Confirm(draft);backgroundSync.Request();return result;
+     var draft=Model<ConfirmDraft>(payload,"request_id","version","payment","fiscal_document","discount_type","discount_value");var result=store.Confirm(draft);backgroundSync.Request();return result;
+    }
+    case "sale.revert": {
+     var draft=Model<RevertSaleDraft>(payload,"request_id","sale_id");var result=store.RevertSale(draft);backgroundSync.Request();return result;
     }
     case "sales.report": {
      var filter=Model<SalesReportFilter>(payload,"from","to","brand","category","payment","query");return store.SalesReport(filter);
@@ -173,7 +176,7 @@ namespace Lineboard {
    foreach(var fixture in fixtures) {
     var item=store.Catalog().SingleOrDefault(x=>String.Equals(Convert.ToString(x["internal_code"]),fixture.code,StringComparison.OrdinalIgnoreCase));
     if(item==null) {
-     store.CreateProduct(new ProductDraft{request_id=fixture.request_id,name=fixture.name,brand="Lineboard",category="Teste QR",internal_code=fixture.code,location="Laboratorio QR",notes="Produto ficticio para teste local de QR Code",cost=10m,price=25m,qr_only=true,variants=new List<VariantDraft>{new VariantDraft{color=fixture.color,size=fixture.size,quantity=1}}});
+     store.CreateProduct(new ProductDraft{request_id=fixture.request_id,name=fixture.name,brand="Lines",category="Teste QR",internal_code=fixture.code,location="Laboratorio QR",notes="Produto ficticio para teste local de QR Code",cost=10m,price=25m,qr_only=true,variants=new List<VariantDraft>{new VariantDraft{color=fixture.color,size=fixture.size,quantity=1}}});
      item=store.Catalog().SingleOrDefault(x=>String.Equals(Convert.ToString(x["internal_code"]),fixture.code,StringComparison.OrdinalIgnoreCase));
     }
     if(item==null||!String.Equals(Convert.ToString(item["name"]),fixture.name,StringComparison.Ordinal))throw new DomainError("TEST_FIXTURE_COLLISION");
@@ -186,6 +189,11 @@ namespace Lineboard {
 
   static string Friendly(string code) {
    var messages=new Dictionary<string,string>(StringComparer.Ordinal) {
+    {"TOO_MANY_PHOTOS","Adicione no máximo 6 imagens por produto."},
+    {"SALE_NOT_FOUND","Venda não encontrada para reversão."},
+    {"SALE_ALREADY_REVERTED","Esta venda já foi revertida."},
+    {"REVERSAL_STOCK_CONFLICT","O estoque desta venda já foi reposto ou alterado. Confira o histórico no SIC antes de reverter, para não devolver as peças em duplicidade."},
+    {"SALE_REVERSAL_UNSUPPORTED","Esta venda não pode ser revertida automaticamente."},
     {"PHOTO_TOO_LARGE","Escolha uma imagem de até 5 MB."},
     {"INVALID_PHOTO_TYPE","Escolha uma imagem JPG/JPEG, PNG ou WebP válida."},
     {"INVALID_PHOTO","Não foi possível abrir esta foto. Escolha a imagem novamente."},
@@ -209,6 +217,7 @@ namespace Lineboard {
     {"REVISION_CONFLICT","A ficha mudou em outra sessão. Reabra e confira as informações."},
     {"EMPTY_CART","Adicione uma peça ao carrinho."},
     {"INVALID_FISCAL_DOCUMENT","Escolha NFC-e ou NF-e para continuar."},
+    {"INVALID_DISCOUNT","Informe um desconto entre 0 e 100% ou um valor em reais que não ultrapasse o subtotal, com até duas casas decimais."},
     {"UNIT_IN_CART","Remova a peça do carrinho antes de ajustar o estoque."},
     {"INVALID_FIELD","Confira os campos do produto."},
     {"INVALID_PRICE","Informe valores válidos de custo e venda."},

@@ -20,10 +20,21 @@ it('uploads the selected file and returns a stable photo reference', async () =>
   const onChange = vi.fn(); const onBusy = vi.fn(); const calls = [];
   setBridgeMock(({ action, payload }) => { calls.push({ action, payload }); return { photo_path: 'store/file.png' }; });
   render(<MantineProvider><ProductPhotoField value="" onChange={onChange} onBusyChange={onBusy} /></MantineProvider>);
-  fireEvent.change(screen.getByLabelText('Escolher imagem do produto'), { target: { files: [new File([png], 'photo.png', { type: 'image/png' })] } });
-  await waitFor(() => expect(onChange).toHaveBeenCalledWith('store/file.png'));
+  fireEvent.change(screen.getByLabelText('Escolher imagens do produto'), { target: { files: [new File([png], 'photo.png', { type: 'image/png' })] } });
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith(['store/file.png']));
   expect(calls[0]).toEqual({ action: 'photo.upload', payload: { content_type: 'image/png', data: 'iVBORw0KGgo=' } });
   expect(onBusy.mock.calls).toEqual([[true], [false]]);
+});
+
+it('uploads multiple images and blocks a seventh image', async () => {
+  const onChange = vi.fn(); const calls = [];
+  setBridgeMock(({ action, payload }) => { calls.push({ action, payload }); return { photo_path: `store/${calls.length}.png` }; });
+  render(<MantineProvider><ProductPhotoField value={['one.png', 'two.png', 'three.png', 'four.png', 'five.png']} onChange={onChange} onBusyChange={() => {}} /></MantineProvider>);
+  const input = screen.getByLabelText('Escolher imagens do produto');
+  fireEvent.change(input, { target: { files: [new File([png], 'six.png'), new File([png], 'seven.png')] } });
+  expect(await screen.findByRole('alert')).toHaveTextContent('no máximo 6 imagens');
+  expect(calls.filter(({ action }) => action === 'photo.upload')).toHaveLength(0);
+  expect(onChange).not.toHaveBeenCalled();
 });
 
 it('rejects unsupported and oversized files before calling the desktop', async () => {
@@ -31,22 +42,22 @@ it('rejects unsupported and oversized files before calling the desktop', async (
   await expect(readPhoto(new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.png'))).rejects.toThrow('5 MB');
 });
 
-it('retains the previous reference when an upload fails and allows removal', async () => {
+it('retains the previous references when an upload fails and allows removal', async () => {
   const onChange = vi.fn();
   setBridgeMock(({ action }) => { if (action === 'photo.url') return { url: 'https://example.com/test.png' }; throw new Error('Sem conexão'); });
   render(<MantineProvider><ProductPhotoField value="store/existing.png" onChange={onChange} onBusyChange={() => {}} /></MantineProvider>);
-  fireEvent.change(screen.getByLabelText('Escolher imagem do produto'), { target: { files: [new File([png], 'photo.png')] } });
+  fireEvent.change(screen.getByLabelText('Escolher imagens do produto'), { target: { files: [new File([png], 'photo.png')] } });
   expect(await screen.findByRole('alert')).toHaveTextContent('Sem conexão');
   expect(onChange).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Remover imagem' }));
-  expect(onChange).toHaveBeenCalledWith('');
+  fireEvent.click(screen.getByRole('button', { name: 'Remover imagem 1' }));
+  expect(onChange).toHaveBeenCalledWith([]);
 });
 
 it('explains an outdated native executable when its bridge does not recognize photo uploads', async () => {
   const onChange = vi.fn();
   setBridgeMock(() => ({ ok: false, error: { code: 'UNKNOWN_ACTION', message: 'A ação solicitada não está disponível.' } }));
   render(<MantineProvider><ProductPhotoField value="" onChange={onChange} onBusyChange={() => {}} /></MantineProvider>);
-  fireEvent.change(screen.getByLabelText('Escolher imagem do produto'), { target: { files: [new File([png], 'photo.png')] } });
-  expect(await screen.findByRole('alert')).toHaveTextContent('O executável do Lineboard está desatualizado');
+  fireEvent.change(screen.getByLabelText('Escolher imagens do produto'), { target: { files: [new File([png], 'photo.png')] } });
+  expect(await screen.findByRole('alert')).toHaveTextContent('O executável do Linesboard está desatualizado');
   expect(onChange).not.toHaveBeenCalled();
 });

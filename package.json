@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/database.test.mjs tests/sic-sync.test.mjs tests/shared-cart.test.mjs tests/product-photos.test.mjs tests/photo-upload.test.mjs tests/activation.test.mjs",
+    "test": "node --experimental-strip-types --test tests/database.test.mjs tests/sic-sync.test.mjs tests/shared-cart.test.mjs tests/product-photos.test.mjs tests/photo-upload.test.mjs tests/activation.test.mjs tests/r2.test.mjs tests/checkout-discounts.test.mjs",
     "test:linux": "node --test tests/linux-adapter.test.mjs",
     "test:postgres": "node --test tests/postgres.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.14",
     "embedded-postgres": "^18.4.0-beta.17",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "supabase": "^3.0.0"
   }
 }

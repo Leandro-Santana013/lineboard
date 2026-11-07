@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { json, sha256 } from "../_shared/http.ts";
 import { apiKey } from "../_shared/environment.ts";
+import { createR2Storage, R2Error } from "../_shared/r2.ts";
 import { decodePhoto, MAX_PHOTO_REQUEST_BYTES, PhotoError, readBoundedBody, validPhotoPath } from "../_shared/product_photos.ts";
 
 // The desktop uses this endpoint for idempotent push and for a full snapshot
@@ -27,13 +28,32 @@ Deno.serve(async (req) => {
     if (event.kind === "photo.upload") {
       const photo = decodePhoto(event.content_type, event.data);
       const path = `${org}/${crypto.randomUUID()}.${photo.extension}`;
-      const { error } = await admin.storage.from("product-photos").upload(path, photo.bytes, { contentType: photo.contentType, upsert: false });
-      if (error) return json({ error: "PHOTO_UPLOAD_FAILED" }, 502);
+      const r2 = createR2Storage();
+      if (r2) {
+        try {
+          await r2.upload(path, photo.bytes, photo.contentType);
+        } catch (error) {
+          if (error instanceof R2Error) return json({ error: "PHOTO_UPLOAD_FAILED" }, 502);
+          throw error;
+        }
+      } else {
+        const { error } = await admin.storage.from("product-photos").upload(path, photo.bytes, { contentType: photo.contentType, upsert: false });
+        if (error) return json({ error: "PHOTO_UPLOAD_FAILED" }, 502);
+      }
       return json({ photo_path: path });
     }
     if (new TextEncoder().encode(text).length > 1_048_576) return json({ error: "REQUEST_TOO_LARGE" }, 413);
     if (event.kind === "photo.url") {
       if (!validPhotoPath(org, event.photo_path)) return json({ error: "INVALID_PHOTO" }, 400);
+      const r2 = createR2Storage();
+      if (r2) {
+        try {
+          if (await r2.exists(event.photo_path)) return json({ url: await r2.signedUrl(event.photo_path, 300) });
+        } catch (error) {
+          if (error instanceof R2Error) return json({ error: "PHOTO_NOT_FOUND" }, 404);
+          throw error;
+        }
+      }
       const { data, error } = await admin.storage.from("product-photos").createSignedUrl(event.photo_path, 300);
       if (error) return json({ error: "PHOTO_NOT_FOUND" }, 404);
       return json({ url: data.signedUrl });
@@ -52,12 +72,13 @@ Deno.serve(async (req) => {
     }
     const { data, error } = await admin.rpc("apply_sic_event", { p_hash: hash, p_event: event });
     if (error) {
-      const known = ["IDEMPOTENCY_CONFLICT", "SANDBOX_NOT_ALLOWED", "SIC_CONNECTION_NOT_REGISTERED", "UNIT_NOT_IMPORTED", "SOURCE_CONFLICT", "INVALID_EVENT", "INVALID_UNIT", "INVALID_SALE", "INVALID_PHOTO", "ADMIN_REQUIRED", "CHECKOUT_IN_PROGRESS", "CHECKOUT_CLAIM_REQUIRED", "INSUFFICIENT_STOCK"];
+      const known = ["IDEMPOTENCY_CONFLICT", "SANDBOX_NOT_ALLOWED", "SIC_CONNECTION_NOT_REGISTERED", "UNIT_NOT_IMPORTED", "SOURCE_CONFLICT", "INVALID_EVENT", "INVALID_UNIT", "INVALID_SALE", "SALE_NOT_FOUND", "SALE_ALREADY_REVERTED", "SALE_REVERSAL_UNSUPPORTED", "REVERSAL_STOCK_CONFLICT", "CLOUD_STOCK_CONFLICT", "INVALID_PHOTO", "ADMIN_REQUIRED", "CHECKOUT_IN_PROGRESS", "CHECKOUT_CLAIM_REQUIRED", "INSUFFICIENT_STOCK"];
       return json({ error: known.find((code) => error.message.includes(code)) ?? "SYNC_EVENT_FAILED" }, 409);
     }
     return json(data);
   } catch (error) {
     if (error instanceof PhotoError) return json({ error: error.message }, error.message === "REQUEST_TOO_LARGE" || error.message === "PHOTO_TOO_LARGE" ? 413 : 400);
+    if (error instanceof R2Error) return json({ error: error.code }, error.status);
     return json({ error: "INVALID_REQUEST" }, 400);
   }
 });

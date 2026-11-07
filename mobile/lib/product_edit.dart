@@ -17,13 +17,8 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
   late final Map<String, TextEditingController> fields;
   bool busy = false;
   String? error;
-  ProductPhoto? photo;
-  String? uploadedPhotoPath;
-  String? currentPhotoUrl;
-  bool photoChanged = false;
-  bool get hasPhoto =>
-      !photoChanged &&
-      (widget.item.data['photo_path'] as String? ?? '').isNotEmpty;
+  late List<ProductPhotoSelection> photos;
+  final Map<String, String> photoUrls = {};
   static const names = {
     'name': 'Nome do produto',
     'category': 'Categoria',
@@ -38,17 +33,55 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
       for (final key in names.keys)
         key: TextEditingController(text: widget.item.data[key] ?? ''),
     };
-    loadPhoto();
+    photos = _initialPhotos();
+    loadPhotoUrls();
   }
 
-  Future<void> loadPhoto() async {
-    if (!hasPhoto) return;
-    try {
-      final url = await widget.repo.photoUrl(widget.item.data['photo_path']);
-      if (mounted && !photoChanged) setState(() => currentPhotoUrl = url);
-    } catch (_) {
-      /* The product remains editable if its image is unavailable. */
+  List<ProductPhotoSelection> _initialPhotos() {
+    final raw = widget.item.data['photo_paths'];
+    final paths = raw is List
+        ? raw.whereType<String>().where((path) => path.isNotEmpty).toSet()
+        : <String>{};
+    final legacy = widget.item.data['photo_path'];
+    if (paths.isEmpty && legacy is String && legacy.isNotEmpty) {
+      paths.add(legacy);
     }
+    return paths.map(ProductPhotoSelection.remote).toList();
+  }
+
+  Future<void> loadPhotoUrls() async {
+    final paths = photos.map((photo) => photo.path).whereType<String>();
+    final results = await Future.wait(
+      paths.map((path) async {
+        try {
+          return MapEntry(path, await widget.repo.photoUrl(path));
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    if (!mounted) return;
+    setState(() {
+      for (final result in results.whereType<MapEntry<String, String>>()) {
+        photoUrls[result.key] = result.value;
+      }
+    });
+  }
+
+  Future<List<String>> _uploadedPaths() async {
+    final result = <String>[];
+    for (final selection in photos) {
+      if (selection.photo != null) {
+        selection.uploadedPath ??= await widget.repo.uploadPhoto(
+          widget.item.data['organization_id'],
+          selection.photo!,
+        );
+        result.add(selection.uploadedPath!);
+      } else if (selection.path != null) {
+        result.add(selection.path!);
+      }
+    }
+    return result;
   }
 
   @override
@@ -68,16 +101,8 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     try {
       final payload = <String, dynamic>{
         ...fields.map((key, field) => MapEntry(key, field.text.trim())),
+        'photo_paths': await _uploadedPaths(),
       };
-      if (photoChanged) {
-        if (photo != null && uploadedPhotoPath == null) {
-          uploadedPhotoPath = await widget.repo.uploadPhoto(
-            widget.item.data['organization_id'],
-            photo!,
-          );
-        }
-        payload['photo_path'] = photo == null ? null : uploadedPhotoPath;
-      }
       await widget.repo.updateProduct(widget.item, payload);
       if (mounted) Navigator.pop(context, payload);
     } catch (e) {
@@ -131,16 +156,10 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                     ),
                   ),
                 ProductPhotoField(
-                  photo: photo,
-                  currentUrl: currentPhotoUrl,
-                  hasCurrentPhoto: hasPhoto,
+                  photos: photos,
+                  photoUrls: photoUrls,
                   enabled: !busy,
-                  onChanged: (value) => setState(() {
-                    photoChanged = true;
-                    photo = value;
-                    uploadedPhotoPath = null;
-                    currentPhotoUrl = null;
-                  }),
+                  onChanged: (value) => setState(() => photos = value),
                 ),
                 if (error != null)
                   Text(error!, style: const TextStyle(color: Colors.red)),

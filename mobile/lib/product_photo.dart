@@ -36,6 +36,15 @@ class ProductPhoto {
   }
 }
 
+class ProductPhotoSelection {
+  ProductPhotoSelection.remote(this.path) : photo = null;
+  ProductPhotoSelection.local(ProductPhoto this.photo) : path = null;
+
+  final String? path;
+  final ProductPhoto? photo;
+  String? uploadedPath;
+}
+
 String photoError(Object error) => switch (error.toString()) {
   final message when message.contains('PHOTO_TOO_LARGE') =>
     'A foto deve ter no máximo 5 MB.',
@@ -48,19 +57,25 @@ String photoError(Object error) => switch (error.toString()) {
 class ProductPhotoField extends StatelessWidget {
   const ProductPhotoField({
     super.key,
-    required this.photo,
+    required this.photos,
     required this.onChanged,
-    this.currentUrl,
-    this.hasCurrentPhoto = false,
+    this.photoUrls = const {},
     this.enabled = true,
   });
-  final ProductPhoto? photo;
-  final ValueChanged<ProductPhoto?> onChanged;
-  final String? currentUrl;
-  final bool hasCurrentPhoto;
+  final List<ProductPhotoSelection> photos;
+  final ValueChanged<List<ProductPhotoSelection>> onChanged;
+  final Map<String, String> photoUrls;
   final bool enabled;
 
   Future<void> choose(BuildContext context, ImageSource source) async {
+    if (photos.length >= 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('É possível adicionar no máximo 6 imagens.'),
+        ),
+      );
+      return;
+    }
     try {
       final file = await ImagePicker().pickImage(
         source: source,
@@ -73,7 +88,9 @@ class ProductPhotoField extends StatelessWidget {
         throw const FormatException('PHOTO_TOO_LARGE');
       }
       final selected = ProductPhoto(await file.readAsBytes());
-      if (context.mounted) onChanged(selected);
+      if (context.mounted) {
+        onChanged([...photos, ProductPhotoSelection.local(selected)]);
+      }
     } catch (error) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
@@ -86,58 +103,86 @@ class ProductPhotoField extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Text('Imagem do produto (opcional)'),
+      const Text('Imagens do produto (opcional)'),
       const SizedBox(height: 8),
-      if (photo != null || currentUrl != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: photo != null
-                ? Image.memory(
-                    photo!.bytes,
-                    height: 160,
-                    width: 200,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) =>
-                        const Text('Não foi possível exibir a prévia.'),
-                  )
-                : Image.network(
-                    currentUrl!,
-                    height: 160,
-                    width: 200,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) =>
-                        const Text('Imagem indisponível.'),
-                  ),
-          ),
+      if (photos.isNotEmpty)
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var index = 0; index < photos.length; index++)
+              SizedBox(
+                width: 112,
+                child: Column(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _preview(photos[index]),
+                    ),
+                    TextButton(
+                      onPressed: enabled
+                          ? () => onChanged([
+                              for (var i = 0; i < photos.length; i++)
+                                if (i != index) photos[i],
+                            ])
+                          : null,
+                      child: Text('Remover ${index + 1}'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
       Wrap(
         spacing: 8,
         children: [
           OutlinedButton.icon(
-            onPressed: enabled
+            onPressed: enabled && photos.length < 6
                 ? () => choose(context, ImageSource.gallery)
                 : null,
             icon: const Icon(Icons.photo_library_outlined),
             label: const Text('Escolher imagem'),
           ),
           OutlinedButton.icon(
-            onPressed: enabled
+            onPressed: enabled && photos.length < 6
                 ? () => choose(context, ImageSource.camera)
                 : null,
             icon: const Icon(Icons.camera_alt_outlined),
             label: const Text('Tirar foto'),
           ),
-          if (photo != null || hasCurrentPhoto)
-            TextButton(
-              onPressed: enabled ? () => onChanged(null) : null,
-              child: const Text('Remover imagem'),
-            ),
+          Text('${photos.length}/6'),
         ],
       ),
-      const Text('JPG/JPEG, PNG ou WebP. Até 5 MB.'),
+      const Text('JPG/JPEG, PNG ou WebP. Até 5 MB cada.'),
       const SizedBox(height: 12),
     ],
   );
+
+  Widget _preview(ProductPhotoSelection selection) {
+    final photo = selection.photo;
+    if (photo != null) {
+      return Image.memory(
+        photo.bytes,
+        height: 100,
+        width: 112,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => const Text('Prévia indisponível.'),
+      );
+    }
+    final url = photoUrls[selection.path];
+    if (url == null) {
+      return const SizedBox(
+        height: 100,
+        width: 112,
+        child: Center(child: Text('Imagem indisponível.')),
+      );
+    }
+    return Image.network(
+      url,
+      height: 100,
+      width: 112,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => const Text('Imagem indisponível.'),
+    );
+  }
 }

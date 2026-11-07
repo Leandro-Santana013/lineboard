@@ -33,6 +33,9 @@ verify_jwt = false
 [functions.sic-sync]
 verify_jwt = false
 
+[functions.product-photos]
+verify_jwt = false
+
 [functions.sic-command-ack]
 verify_jwt = false
 

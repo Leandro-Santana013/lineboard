@@ -18,7 +18,7 @@ function bootstrap() {
 }
 
 function renderApp() {
-  return render(<MantineProvider theme={theme} defaultColorScheme="light"><App /></MantineProvider>);
+  return render(<MantineProvider theme={theme} defaultColorScheme="light" env="test"><App /></MantineProvider>);
 }
 
 describe('Lineboard frontend', () => {
@@ -100,7 +100,9 @@ describe('Lineboard frontend', () => {
     setBridgeMock(({ action }) => {
       if (action === 'bootstrap') {
         const data = bootstrap();
-        data.catalog[1].brand = 'Outra marca';
+        data.catalog[0].brand = 'Lines';
+        data.catalog[1].brand = 'LINES';
+        data.catalog[2].brand = 'Wlak alfaiatari';
         data.catalog.push(unit({ stock_item_id: 'unit-4', barcode: 'SLB-000000000004', name: 'Boné urbano', brand: 'Outra marca', category: 'Acessório', color: 'Branca', size: 'Único', quantity: 0, expected_quantity: 0, internal_code: 'BON-004' }));
         return { data };
       }
@@ -117,6 +119,15 @@ describe('Lineboard frontend', () => {
     expect(screen.getByRole('combobox', { name: 'Filtrar por tamanho' })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /Boné urbano/ })).toBeInTheDocument();
     expect(within(screen.getByRole('row', { name: /Boné urbano/ })).getByText('0')).toBeInTheDocument();
+    const brandFilter = screen.getByRole('combobox', { name: 'Filtrar por marca' });
+    fireEvent.click(brandFilter);
+    const linesOption = await screen.findByRole('option', { name: 'Lines', exact: true });
+    expect(screen.getByRole('option', { name: 'Wlak alfaiatari', exact: true })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'LINES', exact: true })).not.toBeInTheDocument();
+    fireEvent.click(linesOption);
+    expect(await screen.findByRole('row', { name: /Camiseta básica/ })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /Calça jeans/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /Boné urbano/ })).not.toBeInTheDocument();
   });
 
   it('prioritizes exact barcode scanning when adding a product to the caixa', async () => {
@@ -317,6 +328,40 @@ describe('Lineboard frontend', () => {
     expect(screen.getByRole('textbox', { name: /^Nome do produto/ })).toHaveValue('');
   });
 
+  it('deducts a percentage and sends it with the sale, then clears the discount', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Valor do desconto' }), { target: { value: '10' } });
+    expect(document.querySelector('.pos-total-value')).toHaveTextContent('R$ 62,91');
+    expect(document.querySelector('.pos-discount')).toHaveTextContent('6,99');
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Valor do desconto' }), { key: 'Enter' });
+    expect(calls.some((call) => call.action === 'cart.add')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar venda e emitir nota' }));
+    expect(screen.getByText(/Total a pagar:/)).toHaveTextContent('R$ 62,91');
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar e solicitar nota', exact: true }));
+    await waitFor(() => expect(calls.some((call) => call.action === 'cart.confirm')).toBe(true));
+    expect(calls.find((call) => call.action === 'cart.confirm').payload).toMatchObject({ discount_type: 'percent', discount_value: 10 });
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Valor do desconto' })).toHaveValue(''));
+  });
+
+  it('deducts fixed BRL amounts and prevents a discount higher than the subtotal', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Tipo de desconto' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Valor em reais (R$)' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Valor do desconto' }), { target: { value: '20,50' } });
+    expect(document.querySelector('.pos-total-value')).toHaveTextContent('R$ 49,40');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Valor do desconto' }), { target: { value: '70' } });
+    expect(screen.getByRole('button', { name: 'Registrar venda e emitir nota' })).toBeDisabled();
+    expect(screen.getByText(/Informe um valor de 0 até o subtotal/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Valor do desconto' }), { target: { value: '20,50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar venda e emitir nota' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar e solicitar nota', exact: true }));
+    await waitFor(() => expect(calls.find((call) => call.action === 'cart.confirm')?.payload).toMatchObject({ discount_type: 'amount', discount_value: 20.5 }));
+  });
+
   it('reuses the same request id when retrying a timed out confirmation', async () => {
     let confirmations = 0;
     setBridgeMock(async ({ action, payload }) => {
@@ -333,6 +378,7 @@ describe('Lineboard frontend', () => {
     await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: /Caixa/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Dinheiro' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Valor do desconto' }), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: 'Registrar venda e emitir nota' }));
     fireEvent.click(screen.getByRole('button', { name: 'Registrar e solicitar nota', exact: true }));
     expect(await screen.findByText('desktop sem resposta')).toBeInTheDocument();
@@ -343,6 +389,7 @@ describe('Lineboard frontend', () => {
     expect(requests[0].payload.version).toBe(3);
     expect(requests[0].payload.payment).toBe('cash');
     expect(requests[0].payload.fiscal_document).toBe('nfce');
+    expect(requests[0].payload.discount_value).toBe(10);
   });
 
   it('shows recoverable history and label errors instead of empty results', async () => {
@@ -401,21 +448,14 @@ describe('Lineboard frontend', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
-  it('generates local fictional QR labels from the labels page', async () => {
-    const fixtureHtml = '<!doctype html><html><body>TESTE QR SLB-900000000001</body></html>';
-    setBridgeMock(async ({ action, payload }) => {
-      calls.push({ action, payload });
-      if (action === 'bootstrap') return { data: bootstrap() };
-      if (action === 'labels.preview') return { data: { html: '<!doctype html><html><body>Etiquetas</body></html>', test_fixtures_available: true } };
-      if (action === 'labels.fixtures') return { data: { html: fixtureHtml, test_fixtures_available: true } };
-      return { data: {} };
-    });
+  it('keeps QR test-product creation out of the labels page', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'Estoque' });
     fireEvent.click(screen.getByRole('button', { name: 'Etiquetas' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerar produtos QR de teste' }));
-    await waitFor(() => expect(calls.some((call) => call.action === 'labels.fixtures')).toBe(true));
-    await waitFor(() => expect(document.querySelector('iframe')?.getAttribute('srcdoc')).toContain('TESTE QR SLB-900000000001'));
+    await screen.findByTitle('Prévia das etiquetas');
+    expect(screen.queryByRole('button', { name: 'Gerar produtos QR de teste' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Exportar etiquetas' })).toBeInTheDocument();
+    expect(calls.some((call) => call.action === 'labels.fixtures')).toBe(false);
   });
 
   it('shows sales and outflow dashboard with period and classification data', async () => {
@@ -442,5 +482,85 @@ describe('Lineboard frontend', () => {
     expect(screen.getByText('Camiseta básica')).toBeInTheDocument();
     expect(screen.getByText('Aguardando emissor')).toBeInTheDocument();
     expect(calls.some((call) => call.action === 'sales.report' && call.payload.from && call.payload.to)).toBe(true);
+  });
+
+  it('confirms a reversal inside the app, prevents duplicate submissions, and refreshes sales', async () => {
+    const browserConfirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    let reverted = false;
+    let finishReversal;
+    setBridgeMock(async ({ action, payload }) => {
+      calls.push({ action, payload });
+      if (action === 'bootstrap') return { data: bootstrap() };
+      if (action === 'sales.report') return { data: { summary: { sales: reverted ? 0 : 1 }, filters: {}, rows: reverted ? [] : [{ sale_id: 'sale-1', name: 'Camiseta básica', barcode: 'SLB-000000000001', quantity: 1, line_total: 69.9 }] } };
+      if (action === 'sale.revert') return new Promise((resolve) => { finishReversal = () => { reverted = true; resolve({ data: { reversed: true } }); }; });
+      return { data: {} };
+    });
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: 'Vendas e saídas' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reverter venda sale-1' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Reverter venda' });
+    expect(within(dialog).getByText(/cancela a venda inteira/)).toBeInTheDocument();
+    expect(calls.filter((call) => call.action === 'sale.revert')).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reverter venda sale-1' }));
+    dialog = await screen.findByRole('dialog', { name: 'Reverter venda' });
+    const confirm = within(dialog).getByRole('button', { name: 'Confirmar reversão' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(calls.filter((call) => call.action === 'sale.revert')).toHaveLength(1));
+    expect(within(dialog).getByRole('button', { name: 'Voltar' })).toBeDisabled();
+    finishReversal();
+    expect(await screen.findByText('Nenhuma saída encontrada')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Venda revertida e estoque devolvido.')).toBeInTheDocument();
+    expect(browserConfirm).not.toHaveBeenCalled();
+    expect(calls.find((call) => call.action === 'sale.revert').payload).toMatchObject({ sale_id: 'sale-1', request_id: expect.any(String) });
+  });
+
+  it('keeps reversal errors visible and reuses the request id on retry', async () => {
+    let attempts = 0;
+    setBridgeMock(async ({ action, payload }) => {
+      calls.push({ action, payload });
+      if (action === 'bootstrap') return { data: bootstrap() };
+      if (action === 'sales.report') return { data: { summary: {}, filters: {}, rows: [{ sale_id: 'sale-2', name: 'Calça jeans' }] } };
+      if (action === 'sale.revert') {
+        attempts += 1;
+        return attempts === 1 ? { ok: false, error: { code: 'HOST_TIMEOUT', message: 'O desktop não respondeu. Tente novamente.' } } : { data: { reversed: true } };
+      }
+      return { data: {} };
+    });
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: 'Vendas e saídas' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reverter venda sale-2' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Reverter venda' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar reversão' }));
+    expect(await within(dialog).findByText('O desktop não respondeu. Tente novamente.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar reversão' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const reversals = calls.filter((call) => call.action === 'sale.revert');
+    expect(reversals).toHaveLength(2);
+    expect(reversals[1].payload.request_id).toBe(reversals[0].payload.request_id);
+  });
+
+  it('enlarges label previews without changing the export request', async () => {
+    setBridgeMock(async ({ action, payload }) => {
+      calls.push({ action, payload });
+      if (action === 'bootstrap') return { data: bootstrap() };
+      if (action === 'labels.preview') return { data: { html: '<html><body><article class="label">Etiqueta</article></body></html>' } };
+      return { data: {} };
+    });
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: 'Etiquetas' }));
+    const preview = await screen.findByTitle('Prévia das etiquetas');
+    expect(preview).toHaveAttribute('srcdoc', expect.stringContaining('@media screen{.label{zoom:1.5}}'));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ampliação da prévia' }));
+    fireEvent.click(await screen.findByRole('option', { name: '200%' }));
+    expect(preview).toHaveAttribute('srcdoc', expect.stringContaining('@media screen{.label{zoom:2}}'));
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar etiquetas' }));
+    await waitFor(() => expect(calls.find((call) => call.action === 'labels.export')).toEqual({ action: 'labels.export', payload: {} }));
   });
 });

@@ -18,6 +18,15 @@ O workflow do GitHub Actions compila o instalador em Windows e anexa
 `Lineboard-Setup.exe` à release. A página é publicada automaticamente a cada
 alteração em `main`.
 
+### Versão 0.2.3
+
+Inclui desconto em porcentagem ou reais no pagamento, com total líquido no
+SICNET e nos eventos sincronizados; etiquetas ampliadas; confirmação de reversão
+dentro da interface; e melhorias de fotos no desktop e no celular. O APK Android
+ARM64 também está disponível na página de download. Instaladores e APKs ficam
+nas Releases; credenciais, bases locais e relatórios temporários de build não
+fazem parte do código versionado.
+
 Gerenciamento Windows integrado ao banco local do SIC, com Flutter Android/iOS
 para cadastro, etiquetas e leitura remota do caixa, e sincronização com Supabase.
 Cada peça física possui um código interno Code 128 exclusivo. O celular envia
@@ -112,7 +121,7 @@ de demonstração ou operações falsas. `config.json` é ignorado pelo Git. A c
 4. Convide o primeiro administrador no painel Authentication > Users e execute
    `docs/bootstrap.sql`, substituindo o e-mail e o nome da loja. Repita apenas para
    novas empresas. O app não oferece criação pública de empresas.
-5. Publique `supabase functions deploy invite-member commerce sic-sync sic-command-ack activate-desktop --use-api`
+5. Publique `supabase functions deploy invite-member commerce sic-sync sic-command-ack activate-desktop product-photos --use-api`
    e aplique também a migration `202610310001_sic_command_bridge.sql`.
    As chaves internas padrão do Supabase
    são disponibilizadas pelo runtime (`SUPABASE_PUBLISHABLE_KEYS` e
@@ -167,6 +176,43 @@ As funções têm `verify_jwt=false` intencionalmente: `invite-member` valida o 
 com `auth.getUser()` e depois a permissão no banco; `commerce` valida uma
 credencial própria por empresa; `sic-command-ack` valida a credencial de
 integração do desktop. Todas recusam chamadas sem autenticação válida.
+
+### Fotos no Cloudflare R2
+
+As Edge Functions usam R2 quando os secrets abaixo estao configurados no projeto
+Supabase. As chaves nunca entram no APK, no desktop ou no instalador:
+
+```text
+R2_ACCOUNT_ID
+R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY
+R2_BUCKET
+R2_ENDPOINT
+R2_REGION=auto
+```
+
+Crie temporariamente `.local/r2.env` (esta pasta e ignorada pelo Git) com:
+
+```text
+R2_ACCOUNT_ID=<account-id>
+R2_ACCESS_KEY_ID=<access-key-id>
+R2_SECRET_ACCESS_KEY=<secret-access-key>
+R2_BUCKET=<bucket>
+R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+R2_REGION=auto
+```
+
+Configure os secrets no projeto conectado, publique as duas funcoes e remova o arquivo local:
+
+```powershell
+supabase secrets set --env-file .local/r2.env
+supabase functions deploy product-photos sic-sync --use-api
+Remove-Item -LiteralPath .local/r2.env
+```
+
+Sem esses secrets, o fluxo continua usando o bucket privado `product-photos` do
+Supabase. Com R2 configurado, novos uploads vao para o bucket R2 e URLs antigas
+do Supabase continuam sendo lidas durante a migracao.
 
 ## Fluxo operacional no mobile/Supabase
 
