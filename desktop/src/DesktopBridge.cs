@@ -15,7 +15,7 @@ namespace Lineboard {
   static readonly HashSet<string> Actions = new HashSet<string>(StringComparer.Ordinal) {
    "bootstrap", "product.create", "photo.upload", "photo.url", "unit.get", "unit.edit", "stock.adjust",
    "cart.add", "cart.remove", "cart.confirm", "sales.report", "history.list", "labels.preview",
-   "labels.export", "settings.info", "pair.open", "support.outbox"
+   "labels.export", "settings.info", "activation.activate", "pair.open", "support.outbox"
   };
   readonly SicStore store;
   readonly LocalApi api;
@@ -129,7 +129,8 @@ namespace Lineboard {
     case "labels.export": {
      ExactKeys(payload);if(saveLabels==null)throw new DomainError("LABEL_EXPORT_UNAVAILABLE");return new {saved=saveLabels(Labels.Html(LabelUnits(),50,30))};
     }
-    case "settings.info":ExactKeys(payload);return new {address=api.Address,sync_configured=sync.Configured,sync_state=backgroundSync.State,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,realtime_error=realtime==null?null:realtime.LastError,mode=store.Production?"production":"sandbox"};
+    case "settings.info":ExactKeys(payload);return new {address=api.Address,sync_configured=sync.Configured,sync_state=backgroundSync.State,activation_available=!sync.Configured,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,realtime_error=realtime==null?null:realtime.LastError,mode=store.Production?"production":"sandbox"};
+    case "activation.activate":ExactKeys(payload,"code","device_name");return new CloudActivation(store).Activate(StringValue(payload,"code"),StringValue(payload,"device_name"));
     case "pair.open":ExactKeys(payload);return new {address=api.Address,pin=api.OpenPairing(),expires_in_seconds=180};
     case "support.outbox":ExactKeys(payload);return new {items=store.Outbox()};
     default:throw new DomainError("UNKNOWN_ACTION");
@@ -185,7 +186,14 @@ namespace Lineboard {
     {"INVALID_FISCAL_DOCUMENT","Escolha NFC-e ou NF-e para continuar."},
     {"UNIT_IN_CART","Remova a peça do carrinho antes de ajustar o estoque."},
     {"INVALID_FIELD","Confira os campos do produto."},
-    {"INVALID_PRICE","Informe valores válidos de custo e venda."}
+    {"INVALID_PRICE","Informe valores válidos de custo e venda."},
+    {"ACTIVATION_INVALID","Código de ativação inválido."},
+    {"ACTIVATION_REVOKED","Este código de ativação foi revogado."},
+    {"ACTIVATION_EXPIRED","Este código de ativação expirou."},
+    {"ACTIVATION_LIMIT_REACHED","Este código já atingiu o limite de ativações."},
+    {"ACTIVATION_INSTANCE_USED","Este computador já foi ativado."},
+    {"ACTIVATION_NETWORK_ERROR","Não foi possível falar com o servidor de ativação. Confira a internet e tente novamente."},
+    {"ACTIVATION_CONFIG_INVALID","A ativação retornou uma configuração inválida."}
    };
    return messages.ContainsKey(code)?messages[code]:"Não foi possível concluir a operação local.";
   }

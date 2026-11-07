@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.sic-command-ack]
 verify_jwt = false
+
+[functions.activate-desktop]
+verify_jwt = false

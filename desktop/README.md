@@ -202,6 +202,13 @@ O script pede o token em campo oculto, configura as variáveis na máquina para
 todos os usuários do Windows e executa o bootstrap inicial. O token não é gravado no projeto,
 no Git nem em arquivo de log; depois disso, basta abrir o `Lineboard.exe`.
 
+Para instalações novas usando o instalador com ativação, o administrador pode
+gerar um código temporário com `node scripts/create-activation.mjs`. Abra
+**Configurações** no Lineboard, informe o código no cartão **Ativar este
+computador** e reinicie o aplicativo. A credencial e as URLs são gravadas em
+`C:\ProgramData\Lineboard\config.json`; nenhum token precisa ser digitado no
+PowerShell. O código é de uso único por padrão e expira em 24 horas.
+
 O servidor deriva a organização da credencial e registra cada instalação da loja.
 Todos os computadores dessa organização leem o mesmo estoque e o mesmo carrinho
 persistido no Supabase. O celular envia a leitura ao carrinho da loja sem escolher
