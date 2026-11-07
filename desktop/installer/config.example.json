@@ -1,0 +1,9 @@
+{
+  "LINEBOARD_SIC_SERVER": ".\\SQLEXPRESS",
+  "LINEBOARD_SYNC_URL": "https://SEU-PROJETO.supabase.co/functions/v1/sic-sync",
+  "LINEBOARD_SYNC_TOKEN": "",
+  "SUPABASE_URL": "https://SEU-PROJETO.supabase.co",
+  "LINEBOARD_REALTIME_URL": "wss://SEU-PROJETO.supabase.co/realtime/v1/websocket",
+  "LINEBOARD_REALTIME_KEY": "",
+  "LINEBOARD_REALTIME_ACK_URL": "https://SEU-PROJETO.supabase.co/functions/v1/sic-command-ack"
+}

@@ -13,7 +13,7 @@ namespace Lineboard {
   }
   internal CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender){this.store=store;send=sender;pull=null;Configured=sender!=null;}
   CloudSync(SicStore store,Func<Dictionary<string,object>,Dictionary<string,object>> sender,Func<Dictionary<string,object>> receiver){this.store=store;send=sender;pull=receiver;Configured=sender!=null;}
-  static string Env(string name){var value=Environment.GetEnvironmentVariable(name);if(!String.IsNullOrEmpty(value))return value;value=Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.User);if(!String.IsNullOrEmpty(value))return value;return Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.Machine);}
+  static string Env(string name){return Configuration.Get(name);}
   static Func<Dictionary<string,object>,Dictionary<string,object>> CreateSender(){
    var address=Env("LINEBOARD_SYNC_URL");var token=Env("LINEBOARD_SYNC_TOKEN");
    if(String.IsNullOrEmpty(address)||String.IsNullOrEmpty(token))return null;

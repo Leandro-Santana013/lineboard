@@ -10,7 +10,8 @@ using System.Threading.Tasks;
 
 namespace Lineboard {
  // Supabase Realtime is an optional cloud-to-desktop lane. The key is read
- // only from the Windows environment; it is never sent to the React surface.
+ // from the installed Windows configuration; it is never sent to the React
+ // surface. Environment variables remain a backwards-compatible fallback.
  public sealed class RealtimeBridge : IDisposable {
   readonly SicStore store;
   readonly string socketAddress;
@@ -56,13 +57,7 @@ namespace Lineboard {
    State=Configured?"waiting":"not_configured";
   }
 
-  static string Env(string name){
-   var value=Environment.GetEnvironmentVariable(name);
-   if(!String.IsNullOrWhiteSpace(value))return value;
-   value=Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.User);
-   if(!String.IsNullOrWhiteSpace(value))return value;
-   return Environment.GetEnvironmentVariable(name,EnvironmentVariableTarget.Machine);
-  }
+  static string Env(string name){return Configuration.Get(name);}
 
   static bool IsSocket(string value){Uri uri;return Uri.TryCreate(value,UriKind.Absolute,out uri)&&(uri.Scheme=="wss"||uri.Scheme=="ws")&&uri.AbsolutePath=="/realtime/v1/websocket"&&String.IsNullOrEmpty(uri.UserInfo)&&String.IsNullOrEmpty(uri.Query)&&String.IsNullOrEmpty(uri.Fragment);}
   static bool IsAckAddress(string value){Uri uri;return Uri.TryCreate(value,UriKind.Absolute,out uri)&&uri.Scheme=="https"&&uri.Host.EndsWith(".supabase.co",StringComparison.OrdinalIgnoreCase)&&uri.AbsolutePath=="/functions/v1/sic-command-ack"&&String.IsNullOrEmpty(uri.UserInfo)&&String.IsNullOrEmpty(uri.Query)&&String.IsNullOrEmpty(uri.Fragment);}

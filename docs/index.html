@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Lineboard: gestão de estoque e vendas integrada ao SIC.">
+  <title>Lineboard — Gestão da loja</title>
+  <style>
+    :root {
+      --ink: #20201e;
+      --muted: #77736c;
+      --paper: #f5f1e9;
+      --card: #fffcf7;
+      --line: #ded7cb;
+      --accent: #cf6e3c;
+      --accent-dark: #994521;
+      --dark: #252522;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    a { color: inherit; }
+    .shell { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+    header { padding: 28px 0; display: flex; justify-content: space-between; align-items: center; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .08em; font-size: .86rem; }
+    .mark { width: 34px; height: 34px; display: grid; place-items: center; color: #fff; background: var(--dark); border-radius: 9px; font-size: .74rem; letter-spacing: 0; }
+    nav a { color: var(--muted); font-size: .9rem; text-decoration: none; }
+    nav a:hover { color: var(--ink); }
+    .hero { min-height: 610px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 64px; align-items: center; padding: 68px 0 92px; }
+    .eyebrow { color: var(--accent-dark); text-transform: uppercase; letter-spacing: .16em; font-size: .72rem; font-weight: 800; }
+    h1 { max-width: 720px; margin: 18px 0 22px; font-size: clamp(3.1rem, 8vw, 6.4rem); line-height: .94; letter-spacing: -.07em; font-weight: 850; }
+    .lead { max-width: 570px; color: var(--muted); font-size: clamp(1.05rem, 2vw, 1.3rem); }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 50px; padding: 0 22px; border-radius: 7px; font-size: .92rem; font-weight: 800; text-decoration: none; transition: transform .2s ease, background .2s ease; }
+    .button:hover { transform: translateY(-2px); }
+    .button-primary { color: #fff; background: var(--accent); box-shadow: 0 10px 24px rgba(155, 70, 31, .18); }
+    .button-primary:hover { background: var(--accent-dark); }
+    .button-secondary { border: 1px solid var(--line); background: transparent; }
+    .button-secondary:hover { background: var(--card); }
+    .note { margin-top: 16px; color: var(--muted); font-size: .78rem; }
+    .product-card { position: relative; padding: 26px; min-height: 360px; color: #fff; background: var(--dark); border-radius: 18px; box-shadow: 22px 24px 0 rgba(207, 110, 60, .18); overflow: hidden; }
+    .product-card::after { content: ""; position: absolute; width: 250px; height: 250px; right: -95px; bottom: -110px; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; box-shadow: 0 0 0 26px rgba(255,255,255,.05), 0 0 0 52px rgba(255,255,255,.04); }
+    .card-top { display: flex; justify-content: space-between; color: #c7c3bc; text-transform: uppercase; letter-spacing: .14em; font-size: .68rem; font-weight: 700; }
+    .card-title { margin: 92px 0 12px; max-width: 300px; font-size: 2.5rem; line-height: 1; letter-spacing: -.05em; }
+    .card-copy { max-width: 280px; color: #c7c3bc; font-size: .92rem; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 36px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.16); }
+    .stats strong { display: block; font-size: 1.25rem; }
+    .stats span { color: #aaa59d; font-size: .7rem; }
+    .section { padding: 88px 0; border-top: 1px solid var(--line); }
+    .section-heading { display: flex; justify-content: space-between; gap: 40px; align-items: end; margin-bottom: 34px; }
+    h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1; letter-spacing: -.06em; }
+    .section-heading p { max-width: 430px; margin: 0; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .feature { min-height: 190px; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    .feature-number { color: var(--accent); font-size: .75rem; font-weight: 800; }
+    .feature h3 { margin: 34px 0 8px; font-size: 1.15rem; }
+    .feature p { margin: 0; color: var(--muted); font-size: .9rem; }
+    .install { display: grid; grid-template-columns: .7fr 1.3fr; gap: 70px; align-items: start; }
+    .steps { display: grid; gap: 16px; }
+    .step { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+    .step:last-child { border-bottom: 0; }
+    .step-number { width: 30px; height: 30px; display: grid; place-items: center; color: #fff; background: var(--accent); border-radius: 50%; font-size: .8rem; font-weight: 800; }
+    .step strong { display: block; margin-bottom: 3px; }
+    .step span { color: var(--muted); font-size: .9rem; }
+    footer { padding: 28px 0 42px; color: var(--muted); font-size: .8rem; display: flex; justify-content: space-between; gap: 20px; }
+    footer a { text-decoration: none; }
+    @media (max-width: 780px) {
+      .shell { width: min(100% - 28px, 600px); }
+      nav { display: none; }
+      .hero, .install { grid-template-columns: 1fr; gap: 38px; padding-top: 42px; }
+      .hero { min-height: 0; padding-bottom: 72px; }
+      .product-card { min-height: 320px; }
+      .section-heading { display: block; }
+      .section-heading p { margin-top: 16px; }
+      .grid { grid-template-columns: 1fr; }
+      footer { display: block; }
+      footer span { display: block; margin-top: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="shell">
+    <a class="brand" href="./"><span class="mark">LB</span><span>LINEBOARD</span></a>
+    <nav><a href="#instalacao">Como instalar</a></nav>
+  </header>
+
+  <main>
+    <section class="shell hero">
+      <div>
+        <div class="eyebrow">Gestão da loja conectada ao SIC</div>
+        <h1>O estoque no ritmo da loja.</h1>
+        <p class="lead">Cadastro de produtos, etiquetas, estoque e vendas em uma interface simples, integrada ao computador da loja e ao aplicativo móvel.</p>
+        <div class="actions">
+          <a class="button button-primary" href="https://github.com/Leandro-Santana013/lineboard/releases/latest/download/Lineboard-Setup.exe">Baixar para Windows <span aria-hidden="true">↗</span></a>
+          <a class="button button-secondary" href="https://github.com/Leandro-Santana013/lineboard/releases/latest" target="_blank" rel="noreferrer">Ver versões</a>
+        </div>
+        <div class="note">Instalador para Windows 10/11 · versão estável mais recente</div>
+      </div>
+      <div class="product-card" aria-label="Resumo do Lineboard">
+        <div class="card-top"><span>Lineboard</span><span>01 / 01</span></div>
+        <div class="card-title">Loja e estoque em um só lugar.</div>
+        <div class="card-copy">Abra o instalador, avance pelas etapas e comece a operar conectado ao seu SICNET.</div>
+        <div class="stats"><div><strong>1</strong><span>instalador</span></div><div><strong>0</strong><span>variáveis manuais</span></div><div><strong>∞</strong><span>operações</span></div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="shell">
+        <div class="section-heading"><h2>Feito para a operação real.</h2><p>O Lineboard conversa com o banco local do SIC e mantém a experiência simples para quem está no balcão.</p></div>
+        <div class="grid">
+          <article class="feature"><div class="feature-number">01</div><h3>Estoque rastreável</h3><p>Cada peça recebe um código único para cadastro, consulta, ajuste e venda.</p></article>
+          <article class="feature"><div class="feature-number">02</div><h3>Caixa conectado</h3><p>O celular prepara o carrinho e o computador da loja confirma a operação.</p></article>
+          <article class="feature"><div class="feature-number">03</div><h3>Instalação direta</h3><p>Um instalador reúne o aplicativo, a interface e as dependências do desktop.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="instalacao">
+      <div class="shell install">
+        <div><div class="eyebrow">Primeiro acesso</div><h2 style="margin-top: 14px;">Instale em poucos minutos.</h2></div>
+        <div class="steps">
+          <div class="step"><div class="step-number">1</div><div><strong>Baixe o instalador</strong><span>Use o botão acima para baixar a versão estável mais recente.</span></div></div>
+          <div class="step"><div class="step-number">2</div><div><strong>Execute e avance</strong><span>O assistente instala o Lineboard e cria o atalho no computador.</span></div></div>
+          <div class="step"><div class="step-number">3</div><div><strong>Abra o Lineboard</strong><span>O computador precisa ter o SICNET/SQL Server acessível pela conta da loja.</span></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell"><a href="https://github.com/Leandro-Santana013/lineboard" target="_blank" rel="noreferrer">Código e versões no GitHub</a><span>© Lineboard</span></footer>
+</body>
+</html>

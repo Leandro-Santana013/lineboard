@@ -1,0 +1,59 @@
+name: Build Windows installer
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: desktop/frontend
+        run: npm ci
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Download WebView2 bootstrapper
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path vendor -Force | Out-Null
+          Invoke-WebRequest `
+            -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' `
+            -OutFile 'vendor\MicrosoftEdgeWebView2Setup.exe'
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          .\desktop\scripts\package-installer.ps1 `
+            -Server '.\SQLEXPRESS' `
+            -WebView2Bootstrapper '.\vendor\MicrosoftEdgeWebView2Setup.exe' `
+            -InnoSetupPath 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' `
+            -Version $version
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            dist/Lineboard-Setup.exe \
+            --title "Lineboard ${{ github.ref_name }}" \
+            --generate-notes

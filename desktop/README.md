@@ -7,6 +7,33 @@ O laboratório continua disponível somente com `start.ps1 -Lab`. Em 31/10/2026,
 levou 57 produtos e seus recebimentos para a base demonstrativa `SICNET`, com
 backup COPY_ONLY; isso não habilita emissão fiscal.
 
+## Entrega para o computador da loja
+
+O computador da loja não precisa de Node.js, npm, PowerShell de configuração,
+compilador C# ou código-fonte. Gere o instalador em um Windows de build com o
+Inno Setup 6 instalado e com o bootstrapper oficial do WebView2 disponível:
+
+```powershell
+.\desktop\scripts\package-installer.ps1 `
+  -Server '.\SQLEXPRESS' `
+  -WebView2Bootstrapper '.\vendor\MicrosoftEdgeWebView2Setup.exe'
+```
+
+O arquivo `dist\Lineboard-Setup.exe` instala o executável, a interface React,
+`schema.sql`, as DLLs WebView2, o atalho no menu Iniciar/desktop e o WebView2
+Runtime. A configuração é gravada em `%ProgramData%\Lineboard\config.json` e
+preservada durante atualizações; não é necessário criar variáveis de ambiente.
+Para levar também a sincronização cloud, passe `-ConfigFile` com uma cópia
+local preenchida a partir de `installer\config.example.json`. Esse arquivo
+contém credenciais privadas e não deve entrar no Git ou ser enviado junto do
+repositório.
+
+O instalador pressupõe que o computador já tenha o SICNET e o SQL Server
+acessíveis pela conta Windows que abrirá o Lineboard. Ele instala o cliente;
+não substitui o banco do SIC nem cria uma base de produção. Antes da
+apresentação, valide a conexão e deixe o atalho **Lineboard** abrir diretamente
+`Lineboard.exe`.
+
 ## Abrir nesta máquina
 
 O banco `LINEBOARD_LAB` foi preparado a partir de um backup COPY_ONLY do SIC

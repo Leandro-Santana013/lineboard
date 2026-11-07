@@ -1,5 +1,23 @@
 # Lineboard
 
+## Baixar o Lineboard para Windows
+
+A página pública de download fica em
+`https://leandro-santana013.github.io/lineboard/`. O instalador oficial é
+publicado nas [GitHub Releases](https://github.com/Leandro-Santana013/lineboard/releases)
+e o botão da página sempre aponta para a versão estável mais recente.
+
+Para publicar uma nova versão, crie uma tag semântica, por exemplo:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+O workflow do GitHub Actions compila o instalador em Windows e anexa
+`Lineboard-Setup.exe` à release. A página é publicada automaticamente a cada
+alteração em `main`.
+
 Gerenciamento Windows integrado ao banco local do SIC, com Flutter Android/iOS
 para cadastro, etiquetas e leitura remota do caixa, e sincronização com Supabase.
 Cada peça física possui um código interno Code 128 exclusivo. O celular envia
