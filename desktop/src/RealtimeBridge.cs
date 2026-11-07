@@ -21,6 +21,8 @@ namespace Lineboard {
   readonly string instanceId;
   readonly string ackAddress;
   readonly string integrationToken;
+  readonly bool socketConfigured;
+  readonly bool cartWatchConfigured;
   readonly CancellationTokenSource stop=new CancellationTokenSource();
   readonly object lifecycle=new object();
   readonly object commandGate=new object();
@@ -30,6 +32,8 @@ namespace Lineboard {
   public string LastError { get; private set; }
   public bool Configured { get; private set; }
   public bool CommandsConfigured { get; private set; }
+  public string CartWatchState { get; private set; }
+  public string CartWatchError { get; private set; }
   public event Action SharedCartChanged;
 
   public RealtimeBridge(SicStore store) {
@@ -52,8 +56,11 @@ namespace Lineboard {
     if(Uri.TryCreate(supabase,UriKind.Absolute,out baseUri))ack=new Uri(baseUri,"functions/v1/sic-command-ack").ToString();
    }
    ackAddress=ack;
-   Configured=IsSocket(socketAddress)&&!String.IsNullOrWhiteSpace(realtimeKey);
-   CommandsConfigured=Configured&&RegexToken(integrationToken)&&IsAckAddress(ackAddress);
+   socketConfigured=IsSocket(socketAddress)&&!String.IsNullOrWhiteSpace(realtimeKey);
+   cartWatchConfigured=syncAddress!=null&&RegexToken(integrationToken);
+   Configured=socketConfigured||cartWatchConfigured;
+   CommandsConfigured=socketConfigured&&RegexToken(integrationToken)&&IsAckAddress(ackAddress);
+   CartWatchState=cartWatchConfigured?"waiting":"not_configured";
    State=Configured?"waiting":"not_configured";
   }
 
@@ -65,6 +72,43 @@ namespace Lineboard {
   public void Start(){lock(lifecycle){if(worker!=null||!Configured)return;worker=Task.Run(new Func<Task>(RunAsync));}}
 
   async Task RunAsync(){
+   if(socketConfigured)await Task.WhenAll(RunSocketAsync(),WatchCartAsync());
+   else await WatchCartAsync();
+  }
+  async Task WatchCartAsync(){
+   if(!cartWatchConfigured)return;
+   var monitor=new CartVersionMonitor(ReadCartVersion,NotifySharedCartChanged);
+   while(!stop.IsCancellationRequested){
+    try{
+     monitor.Check();CartWatchState="listening";CartWatchError=null;
+     if(!socketConfigured){State="automatic";LastError=null;}
+    }catch(Exception error){
+     CartWatchState="retrying";CartWatchError=SafeError(error);
+     if(!socketConfigured){State="retrying";LastError=CartWatchError;}
+    }
+    try{
+     // WebSocket events remain immediate; a small version check also recovers
+     // missed events. Download the stock snapshot only when the version changes.
+     await Task.Delay(TimeSpan.FromSeconds(CartWatchState=="retrying"?10:State=="listening"?15:3),stop.Token);
+    }catch(OperationCanceledException){break;}
+   }
+   CartWatchState="stopped";
+   if(!socketConfigured)State="stopped";
+  }
+  string ReadCartVersion(){
+   ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
+   var request=(HttpWebRequest)WebRequest.Create(syncAddress+"?kind=cart-version&instance_id="+Uri.EscapeDataString(instanceId));
+   request.Method="GET";request.AllowAutoRedirect=false;request.Timeout=10000;request.ReadWriteTimeout=10000;request.Headers["Authorization"]="Bearer "+integrationToken;
+   try{using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream())){
+    var result=Json.Read<Dictionary<string,object>>(reader.ReadToEnd());object state,instance,organization,version;
+    if(result==null||!result.TryGetValue("state",out state)||Convert.ToString(state)!="cart_version"||
+       !result.TryGetValue("instance_id",out instance)||!String.Equals(Convert.ToString(instance),instanceId,StringComparison.OrdinalIgnoreCase)||
+       !result.TryGetValue("organization_id",out organization)||String.IsNullOrWhiteSpace(Convert.ToString(organization))||
+       !result.TryGetValue("version",out version)||version==null)throw new DomainError("CART_VERSION_INVALID");
+    return Convert.ToString(organization)+":"+Convert.ToString(version,System.Globalization.CultureInfo.InvariantCulture);
+   }}catch(WebException error){if(error.Response!=null)error.Response.Dispose();throw;}
+  }
+  async Task RunSocketAsync(){
    while(!stop.IsCancellationRequested){
     var retry=false;var phase="connecting";
     try{ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;State=phase;using(var socket=new ClientWebSocket()){socket.Options.KeepAliveInterval=TimeSpan.FromSeconds(20);await socket.ConnectAsync(JoinUrl(),stop.Token);phase="joining";State=phase;await Join(socket);phase="listening";State=phase;await Receive(socket);}}

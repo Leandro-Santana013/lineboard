@@ -14,8 +14,19 @@ Deno.serve(async (req) => {
   const { data: org, error: authError } = await admin.rpc("integration_organization", { p_hash: hash });
   if (authError || !org) return json({ error: "UNAUTHORIZED" }, 401);
   if (req.method === "GET") {
-    const instance = new URL(req.url).searchParams.get("instance_id") ?? "";
+    const params = new URL(req.url).searchParams;
+    const instance = params.get("instance_id") ?? "";
     if (!/^[0-9a-f-]{36}$/i.test(instance)) return json({ error: "INVALID_INSTANCE" }, 400);
+    if (params.get("kind") === "cart-version") {
+      // The integration credential determines the store; never accept a store
+      // ID from the caller. No product data or service key is sent to the desktop.
+      const { data, error } = await admin.from("sic_shared_carts")
+        .select("version").eq("organization_id", org).maybeSingle();
+      if (error) return json({ error: "CART_VERSION_FAILED" }, 503);
+      const response = json({ state: "cart_version", organization_id: org, instance_id: instance, version: String(data?.version ?? 0) });
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    }
     const { data, error } = await admin.rpc("read_sic_snapshot", { p_hash: hash, p_instance: instance });
     if (error) return json({ error: "CLOUD_SNAPSHOT_FAILED" }, 500);
     return json(data);

@@ -224,6 +224,11 @@ um computador; a leitura não baixa estoque. A confirmação final é feita no d
 Os desktops recebem pelo Supabase Realtime o evento de mudança do carrinho central;
 cada evento dispara uma reconciliação única, enquanto alterações locais disparam
 envio imediato. Computadores fechados recuperam o estado ao abrir ou ao reconectar.
+O desktop também consulta uma versão pequena do carrinho pelo `sic-sync`, usando
+a credencial da instalação. Sem WebSocket, a verificação ocorre a cada 3 segundos;
+com o canal conectado, ocorre a cada 15 segundos para recuperar eventos perdidos.
+O estoque completo só é reconciliado se a versão mudar. Este mecanismo funciona
+também nas instalações ativadas sem `LINEBOARD_REALTIME_KEY`, sem reativação.
 
 O novo aplicativo mobile inclui uma ação para encaminhar ao carrinho compartilhado
 os itens de uma tentativa antiga que exibia `DESKTOP_CONFIRMATION_REQUIRED`.

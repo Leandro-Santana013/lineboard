@@ -9,6 +9,7 @@ jobs:
         with: { node-version: '22', cache: npm }
       - run: npm ci
       - run: npm test
+      - run: npm run test:cart-watch
       - run: npm run test:postgres
       - uses: denoland/setup-deno@v2
         with: { deno-version: v2.x }

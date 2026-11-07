@@ -721,6 +721,7 @@ function SettingsPage() {
   const realtimeState = valueText(info && info.realtime_state);
   const realtimeStatus = info && info.realtime_configured
     ? realtimeState === 'listening' ? { label: 'Conectado', color: 'brand' }
+      : info.cart_watch_state === 'listening' ? { label: 'Atualização automática', color: 'brand' }
       : realtimeState === 'retrying' ? { label: 'Reconectando', color: 'yellow' }
         : { label: 'Iniciando', color: 'gray' }
     : { label: 'Nao configurado', color: 'gray' };
@@ -769,6 +770,7 @@ function SettingsPage() {
         <Text c="dimmed" mt="xs">O computador recebe as alteracoes do celular pelo canal ao vivo.</Text>
         <Group mt="lg"><Badge color={realtimeStatus.color} variant="light">{realtimeStatus.label}</Badge></Group>
         {info && info.realtime_error ? <Text c="red" size="sm" mt="sm">{info.realtime_error}</Text> : null}
+        {info && info.cart_watch_error ? <Text c="red" size="sm" mt="sm">{info.cart_watch_error}</Text> : null}
       </Paper>
     </SimpleGrid>
   </>;

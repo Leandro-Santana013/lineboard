@@ -448,6 +448,19 @@ describe('Lineboard frontend', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
+  it('shows automatic cart updates when the socket is unavailable but version checks work', async () => {
+    setBridgeMock(({ action }) => {
+      if (action === 'bootstrap') return { data: bootstrap() };
+      if (action === 'settings.info') return { data: { sync_configured: true, realtime_configured: true, realtime_state: 'automatic', cart_watch_state: 'listening' } };
+      return { data: {} };
+    });
+    renderApp();
+    await screen.findByRole('heading', { name: 'Estoque' });
+    fireEvent.click(screen.getByRole('button', { name: 'Configurações' }));
+    expect(await screen.findByText('Atualização automática')).toBeInTheDocument();
+    expect(screen.queryByText('Ativar este computador')).not.toBeInTheDocument();
+  });
+
   it('keeps QR test-product creation out of the labels page', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'Estoque' });

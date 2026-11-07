@@ -135,7 +135,7 @@ namespace Lineboard {
     case "labels.fixtures": {
      ExactKeys(payload);if(store.Production)throw new DomainError("TEST_FIXTURES_SANDBOX_ONLY");EnsureQrTestFixtures();return new {html=Labels.HtmlWithQr(LabelUnits(),50,30),test_fixtures_available=true};
     }
-    case "settings.info":ExactKeys(payload);return new {address=api.Address,server=store.Server,database=store.Database,sync_configured=sync.Configured,sync_state=backgroundSync.State,activation_available=!sync.Configured,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,realtime_error=realtime==null?null:realtime.LastError,mode=store.Production?"production":"sandbox"};
+    case "settings.info":ExactKeys(payload);return new {address=api.Address,server=store.Server,database=store.Database,sync_configured=sync.Configured,sync_state=backgroundSync.State,activation_available=!sync.Configured,realtime_configured=realtime!=null&&realtime.Configured,realtime_state=realtime==null?"not_configured":realtime.State,realtime_error=realtime==null?null:realtime.LastError,cart_watch_state=realtime==null?"not_configured":realtime.CartWatchState,cart_watch_error=realtime==null?null:realtime.CartWatchError,mode=store.Production?"production":"sandbox"};
     case "activation.activate":ExactKeys(payload,"code","device_name");return new CloudActivation(store).Activate(StringValue(payload,"code"),StringValue(payload,"device_name"));
     case "pair.open":ExactKeys(payload);return new {address=api.Address,pin=api.OpenPairing(),expires_in_seconds=180};
     case "support.outbox":ExactKeys(payload);return new {items=store.Outbox()};

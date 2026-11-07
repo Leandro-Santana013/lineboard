@@ -18,6 +18,14 @@ O workflow do GitHub Actions compila o instalador em Windows e anexa
 `Lineboard-Setup.exe` à release. A página é publicada automaticamente a cada
 alteração em `main`.
 
+### Versão 0.2.4 (Windows)
+
+O caixa recebe as leituras do celular automaticamente mesmo nas instalações
+sem chave Realtime. Uma consulta leve verifica a versão do carrinho a cada
+3 segundos e solicita a sincronização quando houver mudanças. Instale a nova
+versão sobre a anterior para preservar a ativação e a configuração da loja.
+O APK Android continua na versão 0.2.3.
+
 ### Versão 0.2.3
 
 Inclui desconto em porcentagem ou reais no pagamento, com total líquido no
