@@ -8,7 +8,7 @@ using System.Linq;
 
 namespace Lineboard {
  public sealed class SicStore {
-  readonly string connectionString; readonly bool production; public readonly string Database; public readonly string InstanceId; public bool Production { get { return production; } }
+  readonly string connectionString; readonly bool production; public readonly string Server; public readonly string Database; public readonly string InstanceId; public bool Production { get { return production; } }
   public event Action Changed;
   internal Action PrepareCheckout;
   internal Action<string,List<Dictionary<string,object>>> ClaimCheckout;
@@ -19,7 +19,7 @@ namespace Lineboard {
    if((!lab&&(!allowProduction||!String.Equals(database,"SICNET",StringComparison.OrdinalIgnoreCase)))||
       (allowProduction&&!String.Equals(database,"SICNET",StringComparison.OrdinalIgnoreCase)))throw new DomainError("SANDBOX_ONLY");
    var builder=new SqlConnectionStringBuilder {DataSource=server,InitialCatalog=database,IntegratedSecurity=true,ConnectTimeout=8,ApplicationName="Lineboard Sandbox Connector"};
-   connectionString=builder.ConnectionString;Database=database;
+   connectionString=builder.ConnectionString;Server=server;Database=database;
    using(var c=Open()) {
     if(lab){
      var root=Path.GetFullPath(Path.Combine(workspace,".local","sic-lab"))+Path.DirectorySeparatorChar;
@@ -74,7 +74,7 @@ namespace Lineboard {
   static void Event(SqlConnection c,SqlTransaction tx,string kind,object payload){
    NonQuery(c,tx,"INSERT lineboard.Outbox(event_id,kind,payload) VALUES(@id,@kind,@payload)","@id",Guid.NewGuid(),"@kind",kind,"@payload",Json.Write(payload));
   }
-  public Dictionary<string,object> Health(){using(var c=Open())return new Dictionary<string,object>{{"mode",production?"production":"sandbox"},{"database",Database},{"instance_id",InstanceId},{"pending",Scalar(c,null,"SELECT COUNT(*) FROM lineboard.Outbox WHERE state='pending'")},{"fiscal_issuance","unavailable"},{"production_writes",production},{"sicnet_write_mode",production?"atomic":"sandbox"}};}
+  public Dictionary<string,object> Health(){using(var c=Open())return new Dictionary<string,object>{{"mode",production?"production":"sandbox"},{"server",Server},{"database",Database},{"instance_id",InstanceId},{"pending",Scalar(c,null,"SELECT COUNT(*) FROM lineboard.Outbox WHERE state='pending'")},{"fiscal_issuance","unavailable"},{"production_writes",production},{"sicnet_write_mode",production?"atomic":"sandbox"}};}
   const string CatalogSql=@"SELECT u.id AS stock_item_id,u.product_id,u.variant_id,u.sic_id,u.barcode,u.category,u.color,u.size,u.location,u.photo AS photo_path,u.revision,u.expected_quantity,
    p.produto AS name,p.fabricante AS brand,p.precocusto AS cost,p.precovenda AS price,p.quantidade AS quantity,p.obs AS notes,p.codinterno AS internal_code,
    p.codipi,p.cst,p.ipi,p.icms,p.basecalculo,p.pesobruto,p.pesoliq,p.ipi_cst,p.ipi_basecalc,p.cean,p.ceantrib,p.cprodanp,p.cest,p.origem,p.cst_pis,p.cst_cofins,p.cbenef,p.fcp,p.cst_ibscbs,p.cclasstrib

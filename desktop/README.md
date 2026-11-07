@@ -195,6 +195,14 @@ ou no controle de versão. A URL deve ser HTTPS e terminar em
 `/functions/v1/sic-sync` no domínio do projeto Supabase. `--sync-now` executa
 o mesmo ciclo imediatamente para diagnóstico ou carga inicial.
 
+O campo `LINEBOARD_SIC_SERVER` representa a instância/servidor do SQL Server,
+não o nome do banco. Se ele não estiver configurado ou apontar para uma
+instância indisponível, o desktop procura automaticamente o LocalDB padrão,
+outras instâncias LocalDB, SQL Express e instâncias registradas no Windows.
+Assim, computadores com nomes diferentes de servidor não precisam de ajuste
+manual. O catálogo do SIC continua sendo `SICNET`, que é o banco esperado pelo
+conector atual.
+
 Em uma nova máquina, abra o PowerShell como Administrador e execute uma vez
 `.\desktop\scripts\configure-cloud.ps1`. Se o SIC estiver no SQL Express,
 informe a instância, por exemplo: `.\desktop\scripts\configure-cloud.ps1 -Server '.\SQLEXPRESS'`.

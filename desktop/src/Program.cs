@@ -10,9 +10,10 @@ namespace Lineboard {
   [STAThread] static int Main(string[] args){
    try{
      string workspace=Option(args,"--workspace",DefaultWorkspace());
-     string server=Option(args,"--server",ConfiguredServer());
      bool explicitDatabase=Array.IndexOf(args,"--database")>=0;
      string database=Option(args,"--database",explicitDatabase?"LINEBOARD_LAB":"SICNET");
+     string requestedServer=Option(args,"--server",null);
+     string server=String.IsNullOrWhiteSpace(requestedServer)?SicDiscovery.ResolveServer(Configuration.Get("LINEBOARD_SIC_SERVER"),database):requestedServer.Trim();
     if(Array.IndexOf(args,"--probe")>=0){Emit(args,Json.Write(Probe(server)));return 0;}
     var explicitProduction=Array.IndexOf(args,"--production")>=0;
     var production=explicitProduction||!explicitDatabase;
@@ -57,10 +58,6 @@ namespace Lineboard {
     }
    }catch(Exception error){Console.Error.WriteLine(error.Message);bool command=Array.Exists(args,a=>a=="--serve"||a=="--self-test"||a=="--health"||a=="--realtime-health"||a=="--probe"||a=="--export-outbox"||a=="--render-preview"||a=="--render-web-preview"||a=="--render-legacy-preview"||a=="--web-self-test"||a=="--web-capture"||a=="--web-capture-large"||a=="--production"||a=="--confirm-production");if(!command)MessageBox.Show("Não foi possível iniciar o Lineboard.\n\n"+error.Message+"\n\nConfira a base isolada e a permissão da API local. Consulte desktop/README.md. Para usar apenas neste computador, inicie com --host localhost.","Lineboard",MessageBoxButtons.OK,MessageBoxIcon.Error);return 1;}
   }
-   static string ConfiguredServer(){
-    var server=Configuration.Get("LINEBOARD_SIC_SERVER");
-    return String.IsNullOrWhiteSpace(server)?@"(localdb)\MSSQLLocalDB":server.Trim();
-   }
    static string DefaultWorkspace(){
     // Keep repository-relative paths for the developer/test bundle. An
     // installed copy under Program Files must keep WebView2 data in a folder
