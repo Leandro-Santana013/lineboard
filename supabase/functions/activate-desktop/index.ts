@@ -12,7 +12,11 @@ function randomHex(bytes: number) {
 }
 
 function errorCode(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error ?? "");
+  const value = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+  const message = [value?.message, value?.code, value?.details, value?.hint]
+    .filter((part) => part !== undefined && part !== null)
+    .map((part) => String(part))
+    .join(" ");
   const known = ["ACTIVATION_INVALID", "ACTIVATION_REVOKED", "ACTIVATION_EXPIRED", "ACTIVATION_LIMIT_REACHED", "ACTIVATION_INSTANCE_USED"];
   return known.find((code) => message.includes(code)) ?? "ACTIVATION_FAILED";
 }
